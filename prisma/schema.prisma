@@ -11,173 +11,173 @@ datasource db {
 
 // Bot Orders Table - stores orders from chat bots
 model BotOrder {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now()) @map("created_at")
+  updated_at DateTime @updatedAt @map("updated_at")
 
   // Bot order identification
-  botOrderId String @unique // Unique ID from bot system
-  source     String         // telegram, whatsapp, messenger, etc.
-  chatId     String         // Chat/conversation ID
+  bot_order_id String @unique @map("bot_order_id")
+  source       String
+  chat_id      String @map("chat_id")
 
   // Customer information
-  customerPhone String
-  customerName  String
-  customerEmail String?
+  customer_phone String @map("customer_phone")
+  customer_name  String @map("customer_name")
+  customer_email String? @map("customer_email")
 
   // Order details
-  products     String // JSON string of products array
-  deliveryInfo String // JSON string of delivery information
-  paymentMethod String
-  totalAmount  Float
+  products      String // JSON string of products array
+  delivery_info String @map("delivery_info") // JSON string of delivery information
+  payment_method String @map("payment_method")
+  total_amount  Float @map("total_amount")
   
   // Order status and tracking
-  status String @default("PENDING") // PENDING, CONFIRMED, PREPARING, READY, DELIVERED, CANCELLED, REFUNDED
+  status String @default("PENDING")
   notes  String?
 
   // SendPulse integration
-  sendpulseDealId    String?
-  sendpulseContactId String?
+  sendpulse_deal_id    String? @map("sendpulse_deal_id")
+  sendpulse_contact_id String? @map("sendpulse_contact_id")
 
   // Additional metadata
-  metadata String @default("{}") // JSON string for additional data
+  metadata String @default("{}")
 
   @@map("bot_orders")
-  @@index([botOrderId])
+  @@index([bot_order_id])
   @@index([source])
-  @@index([customerPhone])
+  @@index([customer_phone])
   @@index([status])
-  @@index([createdAt])
+  @@index([created_at])
 }
 
 // Product Mapping Table - maps ecommerce products to SendPulse products
 model ProductMapping {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now()) @map("created_at")
+  updated_at DateTime @updatedAt @map("updated_at")
 
   // Mapping information
-  ecommerceId  Int    @unique // ID from ecommerce database
-  sendpulseId  Int             // ID in SendPulse CRM
-  name         String          // Product name for reference
+  ecommerce_id  Int    @unique @map("ecommerce_id")
+  sendpulse_id  Int    @map("sendpulse_id")
+  name         String
   
   // Optional sync information
-  lastSyncAt   DateTime?
-  syncStatus   String @default("ACTIVE") // ACTIVE, INACTIVE, ERROR
+  last_sync_at DateTime? @map("last_sync_at")
+  sync_status  String @default("ACTIVE") @map("sync_status")
 
   @@map("product_mappings")
-  @@index([ecommerceId])
-  @@index([sendpulseId])
+  @@index([ecommerce_id])
+  @@index([sendpulse_id])
 }
 
 // Customer Mapping Table - maps ecommerce customers to SendPulse contacts
 model CustomerMapping {
-  id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now()) @map("created_at")
+  updated_at DateTime @updatedAt @map("updated_at")
 
   // Customer identification
-  ecommerceId    Int?    // ID from ecommerce database (nullable for bot-only customers)
-  phone          String  @unique // Primary identifier
+  ecommerce_id    Int?    @map("ecommerce_id")
+  phone          String  @unique
   email          String?
   
   // SendPulse information
-  sendpulseId    String  // Contact ID in SendPulse CRM
-  firstName      String
-  lastName       String
+  sendpulse_id    String  @map("sendpulse_id")
+  first_name      String @map("first_name")
+  last_name       String @map("last_name")
   
   // Sync information
-  lastSyncAt     DateTime?
-  syncStatus     String @default("ACTIVE") // ACTIVE, INACTIVE, ERROR
+  last_sync_at     DateTime? @map("last_sync_at")
+  sync_status     String @default("ACTIVE") @map("sync_status")
 
   @@map("customer_mappings")
   @@index([phone])
   @@index([email])
-  @@index([sendpulseId])
+  @@index([sendpulse_id])
 }
 
 // Sync Jobs Table - tracks synchronization jobs
 model SyncJob {
   id          Int      @id @default(autoincrement())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  startedAt   DateTime?
-  completedAt DateTime?
+  created_at  DateTime @default(now()) @map("created_at")
+  updated_at  DateTime @updatedAt @map("updated_at")
+  started_at  DateTime? @map("started_at")
+  completed_at DateTime? @map("completed_at")
 
   // Job information
-  jobType     String   // product_sync, order_sync, customer_sync
-  status      String   @default("PENDING") // PENDING, RUNNING, COMPLETED, ERROR
+  job_type     String   @map("job_type")
+  status      String   @default("PENDING")
   
   // Results
-  itemsProcessed Int @default(0)
-  itemsSuccess   Int @default(0)
-  itemsError     Int @default(0)
+  items_processed Int @default(0) @map("items_processed")
+  items_success   Int @default(0) @map("items_success")
+  items_error     Int @default(0) @map("items_error")
   
   // Error information
-  errorMessage String?
-  errorDetails String? // JSON string of detailed errors
+  error_message String? @map("error_message")
+  error_details String? @map("error_details")
   
   // Configuration
-  config       String @default("{}") // JSON string of job configuration
+  config       String @default("{}")
 
   @@map("sync_jobs")
-  @@index([jobType])
+  @@index([job_type])
   @@index([status])
-  @@index([createdAt])
+  @@index([created_at])
 }
 
 // Webhook Events Table - logs incoming webhooks
 model WebhookEvent {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now()) @map("created_at")
 
   // Webhook information
-  source    String   // sendpulse, telegram, whatsapp, etc.
-  eventType String   // order_update, contact_update, etc.
-  eventId   String?  // External event ID if available
+  source     String
+  event_type String   @map("event_type")
+  event_id   String?  @map("event_id")
   
   // Request details
-  headers   String   // JSON string of headers
-  payload   String   // JSON string of payload
+  headers   String
+  payload   String
   
   // Processing status
   processed    Boolean @default(false)
-  processedAt  DateTime?
-  errorMessage String?
+  processed_at  DateTime? @map("processed_at")
+  error_message String? @map("error_message")
 
   @@map("webhook_events")
   @@index([source])
-  @@index([eventType])
+  @@index([event_type])
   @@index([processed])
-  @@index([createdAt])
+  @@index([created_at])
 }
 
 // API Logs Table - logs important API calls for debugging
 model ApiLog {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  created_at DateTime @default(now()) @map("created_at")
 
   // Request information
-  method     String
-  endpoint   String
-  statusCode Int
+  method      String
+  endpoint    String
+  status_code Int @map("status_code")
   
   // User information
-  userType   String?  // api_key, jwt, anonymous
-  userId     String?
-  userAgent  String?
-  ipAddress  String?
+  user_type   String?  @map("user_type")
+  user_id     String?  @map("user_id")
+  user_agent  String?  @map("user_agent")
+  ip_address  String?  @map("ip_address")
   
   // Timing
-  responseTime Int?    // Response time in milliseconds
+  response_time Int? @map("response_time")
   
   // Additional context
-  context      String @default("{}") // JSON string for additional context
-  errorMessage String?
+  context       String @default("{}")
+  error_message String? @map("error_message")
 
   @@map("api_logs")
   @@index([endpoint])
-  @@index([statusCode])
-  @@index([userType])
-  @@index([createdAt])
+  @@index([status_code])
+  @@index([user_type])
+  @@index([created_at])
 }
