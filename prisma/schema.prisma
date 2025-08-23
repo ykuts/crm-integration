@@ -12,129 +12,129 @@ datasource db {
 // Bot Orders Table - stores orders from chat bots
 model BotOrder {
   id         Int      @id @default(autoincrement())
-  created_at DateTime @default(now()) @map("created_at")
-  updated_at DateTime @updatedAt @map("updated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   // Bot order identification
-  bot_order_id String @unique @map("bot_order_id")
+  botOrderId String @unique @map("bot_order_id")
   source       String
-  chat_id      String @map("chat_id")
+  chatId      String @map("chat_id")
 
   // Customer information
-  customer_phone String @map("customer_phone")
-  customer_name  String @map("customer_name")
-  customer_email String? @map("customer_email")
+  customerPhone String @map("customer_phone")
+  customerName  String @map("customer_name")
+  customerEmail String? @map("customer_email")
 
   // Order details
   products      String // JSON string of products array
-  delivery_info String @map("delivery_info") // JSON string of delivery information
-  payment_method String @map("payment_method")
-  total_amount  Float @map("total_amount")
-  
+  deliveryInfo  String @map("delivery_info") // JSON string of delivery information
+  paymentMethod String @map("payment_method")
+  totalAmount   Float @map("total_amount")
+
   // Order status and tracking
   status String @default("PENDING")
   notes  String?
 
   // SendPulse integration
-  sendpulse_deal_id    String? @map("sendpulse_deal_id")
-  sendpulse_contact_id String? @map("sendpulse_contact_id")
+  sendpulseDealId   String?   @map("sendpulse_deal_id")
+  sendpulseContactId String?  @map("sendpulse_contact_id")
 
   // Additional metadata
   metadata String @default("{}")
 
   @@map("bot_orders")
-  @@index([bot_order_id])
+  @@index([botOrderId])
   @@index([source])
-  @@index([customer_phone])
+  @@index([customerPhone])
   @@index([status])
-  @@index([created_at])
+  @@index([createdAt])
 }
 
 // Product Mapping Table - maps ecommerce products to SendPulse products
 model ProductMapping {
   id         Int      @id @default(autoincrement())
-  created_at DateTime @default(now()) @map("created_at")
-  updated_at DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   // Mapping information
-  ecommerce_id  Int    @unique @map("ecommerce_id")
-  sendpulse_id  Int    @map("sendpulse_id")
+  ecommerceId  Int    @unique @map("ecommerce_id")
+  sendpulseId  Int    @map("sendpulse_id")
   name         String
   
   // Optional sync information
-  last_sync_at DateTime? @map("last_sync_at")
-  sync_status  String @default("ACTIVE") @map("sync_status")
+  lastSyncAt  DateTime? @map("last_sync_at")
+  syncStatus  String @default("ACTIVE") @map("sync_status")
 
   @@map("product_mappings")
-  @@index([ecommerce_id])
-  @@index([sendpulse_id])
+  @@index([ecommerceId])
+  @@index([sendpulseId])
 }
 
 // Customer Mapping Table - maps ecommerce customers to SendPulse contacts
 model CustomerMapping {
   id         Int      @id @default(autoincrement())
-  created_at DateTime @default(now()) @map("created_at")
-  updated_at DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
   // Customer identification
-  ecommerce_id    Int?    @map("ecommerce_id")
+  ecommerceId    Int?    @map("ecommerce_id")
   phone          String  @unique
   email          String?
   
   // SendPulse information
-  sendpulse_id    String  @map("sendpulse_id")
-  first_name      String @map("first_name")
-  last_name       String @map("last_name")
-  
+  sendpulseId    String  @map("sendpulse_id")
+  firstName      String @map("first_name")
+  lastName       String @map("last_name")
+
   // Sync information
-  last_sync_at     DateTime? @map("last_sync_at")
-  sync_status     String @default("ACTIVE") @map("sync_status")
+  lastSyncAt     DateTime? @map("last_sync_at")
+  syncStatus     String @default("ACTIVE") @map("sync_status")
 
   @@map("customer_mappings")
   @@index([phone])
   @@index([email])
-  @@index([sendpulse_id])
+  @@index([sendpulseId])
 }
 
 // Sync Jobs Table - tracks synchronization jobs
 model SyncJob {
   id          Int      @id @default(autoincrement())
-  created_at  DateTime @default(now()) @map("created_at")
-  updated_at  DateTime @updatedAt @map("updated_at")
-  started_at  DateTime? @map("started_at")
-  completed_at DateTime? @map("completed_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  startedAt  DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
 
   // Job information
-  job_type     String   @map("job_type")
+  jobType     String   @map("job_type")
   status      String   @default("PENDING")
   
   // Results
-  items_processed Int @default(0) @map("items_processed")
-  items_success   Int @default(0) @map("items_success")
-  items_error     Int @default(0) @map("items_error")
-  
+  itemsProcessed Int @default(0) @map("items_processed")
+  itemsSuccess   Int @default(0) @map("items_success")
+  itemsError     Int @default(0) @map("items_error")
+
   // Error information
-  error_message String? @map("error_message")
-  error_details String? @map("error_details")
-  
+  errorMessage String? @map("error_message")
+  errorDetails String? @map("error_details")
+
   // Configuration
   config       String @default("{}")
 
   @@map("sync_jobs")
-  @@index([job_type])
+  @@index([jobType])
   @@index([status])
-  @@index([created_at])
+  @@index([createdAt])
 }
 
 // Webhook Events Table - logs incoming webhooks
 model WebhookEvent {
   id         Int      @id @default(autoincrement())
-  created_at DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   // Webhook information
   source     String
-  event_type String   @map("event_type")
-  event_id   String?  @map("event_id")
+  eventType  String   @map("event_type")
+  eventId    String?  @map("event_id")
   
   // Request details
   headers   String
@@ -142,42 +142,42 @@ model WebhookEvent {
   
   // Processing status
   processed    Boolean @default(false)
-  processed_at  DateTime? @map("processed_at")
-  error_message String? @map("error_message")
+  processedAt  DateTime? @map("processed_at")
+  errorMessage String? @map("error_message")
 
   @@map("webhook_events")
   @@index([source])
-  @@index([event_type])
+  @@index([eventType])
   @@index([processed])
-  @@index([created_at])
+  @@index([createdAt])
 }
 
 // API Logs Table - logs important API calls for debugging
 model ApiLog {
   id         Int      @id @default(autoincrement())
-  created_at DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   // Request information
   method      String
   endpoint    String
-  status_code Int @map("status_code")
+  statusCode  Int @map("status_code")
   
   // User information
-  user_type   String?  @map("user_type")
-  user_id     String?  @map("user_id")
-  user_agent  String?  @map("user_agent")
-  ip_address  String?  @map("ip_address")
-  
+  userType    String?  @map("user_type")
+  userId      String?  @map("user_id")
+  userAgent   String?  @map("user_agent")
+  ipAddress   String?  @map("ip_address")
+
   // Timing
-  response_time Int? @map("response_time")
-  
+  responseTime Int? @map("response_time")
+
   // Additional context
   context       String @default("{}")
-  error_message String? @map("error_message")
+  errorMessage  String? @map("error_message")
 
   @@map("api_logs")
   @@index([endpoint])
-  @@index([status_code])
-  @@index([user_type])
-  @@index([created_at])
+  @@index([statusCode])
+  @@index([userType])
+  @@index([createdAt])
 }
