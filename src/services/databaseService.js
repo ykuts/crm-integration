@@ -124,6 +124,50 @@ export class DatabaseService {
     }
   }
 
+  /**
+ * Get single product by ID from ecommerce database
+ */
+async getEcommerceProduct(productId) {
+  try {
+    const product = await this.ecommerceDb.$queryRaw`
+      SELECT 
+        id,
+        name,
+        description,
+        price,
+        images,
+        stock,
+        "isActive",
+        "createdAt",
+        "updatedAt",
+        "categoryId"
+      FROM "Product" 
+      WHERE id = ${productId}
+      AND "isActive" = true
+    `;
+
+    if (!product || product.length === 0) {
+      throw new Error(`Product with ID ${productId} not found or not active`);
+    }
+
+    const foundProduct = product[0];
+    
+    logger.info('Single ecommerce product retrieved', { 
+      productId, 
+      name: foundProduct.name,
+      price: foundProduct.price 
+    });
+    
+    return foundProduct;
+  } catch (error) {
+    logger.error('Failed to get single ecommerce product', {
+      error: error.message,
+      productId
+    });
+    throw error;
+  }
+}
+
   // === PRODUCT MAPPING OPERATIONS ===
 
   async saveProductMapping(ecommerceId, sendpulseId, name = null) {
