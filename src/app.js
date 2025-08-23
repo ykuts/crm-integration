@@ -8,8 +8,8 @@ import dotenv from 'dotenv';
 
 // Import routes
 import botRoutes from './routes/botRoutes.js';
-import webhookRoutes from './routes/webhookRoutes.js';
-import syncRoutes from './routes/syncRoutes.js';
+//import webhookRoutes from './routes/webhookRoutes.js';
+//import syncRoutes from './routes/syncRoutes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -17,7 +17,7 @@ import { authMiddleware } from './middleware/auth.js';
 import logger from './utils/logger.js';
 
 // Import services
-import { SyncManager } from './services/syncManager.js';
+//import { SyncManager } from './services/syncManager.js';
 
 // Load environment variables
 dotenv.config();
@@ -70,8 +70,8 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api/bot', authMiddleware, botRoutes);
-app.use('/api/webhook', webhookRoutes); // No auth for webhooks (signature validation instead)
-app.use('/api/sync', authMiddleware, syncRoutes);
+//app.use('/api/webhook', webhookRoutes); // No auth for webhooks (signature validation instead)
+//app.use('/api/sync', authMiddleware, syncRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -91,12 +91,12 @@ app.get('/', (req, res) => {
 app.use(errorHandler);
 
 // Initialize sync manager if auto sync is enabled
-let syncManager;
+/* let syncManager;
 if (process.env.ENABLE_AUTO_SYNC === 'true') {
   syncManager = new SyncManager();
   syncManager.startSyncJobs();
   logger.info('Auto sync jobs started');
-}
+} */
 
 // Start server
 app.listen(PORT, () => {
@@ -106,7 +106,7 @@ app.listen(PORT, () => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+/* process.on('SIGTERM', () => {
   logger.info('SIGTERM received, shutting down gracefully');
   if (syncManager) {
     syncManager.stopSyncJobs();
@@ -120,6 +120,6 @@ process.on('SIGINT', () => {
     syncManager.stopSyncJobs();
   }
   process.exit(0);
-});
+}); */
 
 export default app;
