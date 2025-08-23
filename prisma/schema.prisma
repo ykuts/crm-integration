@@ -1,0 +1,124 @@
+// CRM Integration Service - Final Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("CRM_DATABASE_URL")
+}
+
+// 1. Маппинг между твоими товарами и SendPulse
+model ProductMapping {
+  id              Int      @id @default(autoincrement())
+  ecommerceId     Int      @unique @map("ecommerce_id")    // ID товара в твоей БД
+  sendpulseId     Int      @map("sendpulse_id")            // ID товара в SendPulse
+  
+  // Дополнительная информация для синхронизации
+  name            String?                                   // Название для удобства
+  lastSyncAt      DateTime? @map("last_sync_at")           // Когда последний раз синхронизировали
+  syncStatus      String   @default("PENDING")             // PENDING, SYNCED, FAILED
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@map("product_mappings")
+}
+
+// 2. Маппинг клиентов (на будущее)
+model CustomerMapping {
+  id              Int      @id @default(autoincrement())
+  ecommerceId     Int?     @map("ecommerce_id")            // ID клиента в твоей БД (может быть null для bot клиентов)
+  sendpulseId     Int      @map("sendpulse_id")            // ID контакта в SendPulse
+  phone           String?                                   // Телефон для поиска
+  source          String                                    // 'website', 'whatsapp', 'telegram'
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@map("customer_mappings")
+}
+
+// 3. Заказы от ботов
+model BotOrder {
+  id              Int      @id @default(autoincrement())
+  botOrderId      String   @unique @map("bot_order_id")    // Уникальный ID от бота
+  source          String                                    // 'whatsapp', 'telegram'
+  chatId          String   @map("chat_id")                 // ID чата
+  
+  // Связь с SendPulse
+  sendpulseDealId Int?     @map("sendpulse_deal_id")       // ID сделки в SendPulse
+  sendpulseContactId Int?  @map("sendpulse_contact_id")    // ID контакта в SendPulse
+  
+  // Данные клиента
+  customerPhone   String   @map("customer_phone")
+  customerName    String?  @map("customer_name")
+  
+  // Данные заказа
+  totalAmount     Float    @map("total_amount")
+  currency        String   @default("CHF")
+  paymentMethod   String?  @map("payment_method")
+  deliveryInfo    String?  @map("delivery_info")          // JSON
+  notes           String?
+  
+  // Товары (JSON массив)
+  products        String                                    // JSON: [{"ecommerceId": 1, "quantity": 2}]
+  
+  // Статус
+  status          String   @default("PENDING")             // PENDING, CREATED, CONFIRMED, CANCELLED
+  errorMessage    String?  @map("error_message")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  // Связи
+  orderProducts   BotOrderProduct[]
+  
+  @@map("bot_orders")
+}
+
+// 4. Детали товаров в заказе от бота
+model BotOrderProduct {
+  id              Int      @id @default(autoincrement())
+  botOrderId      Int      @map("bot_order_id")
+  ecommerceProductId Int   @map("ecommerce_product_id")    // ID товара в твоей БД
+  sendpulseProductId Int?  @map("sendpulse_product_id")    // ID товара в SendPulse
+  
+  quantity        Int
+  unitPrice       Float    @map("unit_price")              // Цена на момент заказа
+  totalPrice      Float    @map("total_price")
+  
+  botOrder        BotOrder @relation(fields: [botOrderId], references: [id], onDelete: Cascade)
+  
+  @@map("bot_order_products")
+}
+
+// 5. Синхронизация статусов
+model SyncLog {
+  id              Int      @id @default(autoincrement())
+  operation       String                                    // 'sync_products', 'create_order', etc.
+  entityType      String   @map("entity_type")             // 'product', 'customer', 'order'
+  entityId        Int?     @map("entity_id")               // ID сущности
+  
+  status          String                                    // SUCCESS, FAILED
+  message         String?                                   // Сообщение об ошибке или успехе
+  details         String?                                   // JSON с деталями
+  
+  duration        Int?                                      // Время выполнения в мс
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  @@map("sync_logs")
+}
+
+// 6. Настройки сервиса
+model ServiceConfig {
+  id              Int      @id @default(autoincrement())
+  key             String   @unique
+  value           String
+  description     String?
+  
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@map("service_config")
+}

@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  crm-integration-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DATABASE_URL=${DATABASE_URL}
+      - CRM_API_URL=${CRM_API_URL}
+      - CRM_API_KEY=${CRM_API_KEY}
+      - CRM_WEBHOOK_SECRET=${CRM_WEBHOOK_SECRET}
+      - BOT_API_KEY=${BOT_API_KEY}
+      - ENABLE_AUTO_SYNC=${ENABLE_AUTO_SYNC}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  # Redis for caching and queue management
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  # Optional: Redis GUI for development
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - crm-network
+    profiles:
+      - dev
+
+volumes:
+  redis_data:
+
+networks:
+  crm-network:
+    driver: bridge
+
+# For development environment
+# docker-compose --profile dev up
