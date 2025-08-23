@@ -13,7 +13,7 @@ import botRoutes from './routes/botRoutes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
-import { authMiddleware } from './middleware/auth.js';
+// Remove this import: import { authMiddleware } from './middleware/auth.js';
 import logger from './utils/logger.js';
 
 // Import services
@@ -24,6 +24,9 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// Fix for Railway proxy headers
+app.set('trust proxy', true);
 
 // Security middleware
 app.use(helmet());
@@ -43,7 +46,8 @@ app.use(cors({
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.API_RATE_LIMIT || 100,
-  message: 'Too many requests from this IP, please try again later.'
+  message: 'Too many requests from this IP, please try again later.',
+  trustProxy: true // Add this for Railway
 });
 app.use(limiter);
 
@@ -68,8 +72,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Routes
-app.use('/api/bot', authMiddleware, botRoutes);
+// Routes - REMOVE authMiddleware since botRoutes has its own validateApiKey
+app.use('/api/bot', botRoutes); // FIXED: Removed authMiddleware
 //app.use('/api/webhook', webhookRoutes); // No auth for webhooks (signature validation instead)
 //app.use('/api/sync', authMiddleware, syncRoutes);
 
@@ -90,36 +94,11 @@ app.get('/', (req, res) => {
 // Error handling middleware (must be last)
 app.use(errorHandler);
 
-// Initialize sync manager if auto sync is enabled
-/* let syncManager;
-if (process.env.ENABLE_AUTO_SYNC === 'true') {
-  syncManager = new SyncManager();
-  syncManager.startSyncJobs();
-  logger.info('Auto sync jobs started');
-} */
-
 // Start server
 app.listen(PORT, () => {
   logger.info(`CRM Integration Service started on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV}`);
   logger.info(`CRM API URL: ${process.env.CRM_API_URL}`);
 });
-
-// Graceful shutdown
-/* process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  if (syncManager) {
-    syncManager.stopSyncJobs();
-  }
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  if (syncManager) {
-    syncManager.stopSyncJobs();
-  }
-  process.exit(0);
-}); */
 
 export default app;
