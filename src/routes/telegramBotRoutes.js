@@ -7,6 +7,43 @@ import logger from '../utils/logger.js';
 const router = express.Router();
 const botController = new BotController();
 
+// DEBUG: Add logging middleware to see what's hitting the routes
+router.use((req, res, next) => {
+  logger.info('TELEGRAM ROUTE HIT', {
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl,
+    headers: {
+      'content-type': req.headers['content-type'],
+      'x-api-key': req.headers['x-api-key'] ? 'present' : 'missing'
+    },
+    bodySize: JSON.stringify(req.body).length
+  });
+  next();
+});
+
+// DEBUG: Temporary endpoint without API key validation
+router.post('/debug-telegram-order', async (req, res) => {
+  logger.info('DEBUG: Telegram order creation attempt', {
+    hasBody: !!req.body,
+    bodyKeys: Object.keys(req.body || {}),
+    source: req.body?.source,
+    contact_id: req.body?.contact_id
+  });
+
+  res.json({
+    success: true,
+    message: 'Debug endpoint reached successfully',
+    timestamp: new Date().toISOString(),
+    received: {
+      source: req.body?.source,
+      contact_id: req.body?.contact_id,
+      hasProducts: !!req.body?.products,
+      productCount: req.body?.products?.length || 0
+    }
+  });
+});
+
 // Middleware to validate API key for all bot routes
 router.use(validateApiKey);
 
