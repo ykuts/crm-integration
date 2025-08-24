@@ -47,13 +47,13 @@ export class DatabaseService {
           price,
           images,
           stock,
-          "isActive",
+          "syncStatus",
           "createdAt",
           "updatedAt",
           "categoryId"
         FROM "Product" 
         WHERE id = ${id}
-        AND "isActive" = true
+        AND "syncStatus" = 'ACTIVE'
       `;
 
       if (!products || products.length === 0) {
@@ -89,11 +89,11 @@ export class DatabaseService {
           description,
           price,
           images,
-          "isActive",
+          "syncStatus",
           "createdAt",
           "updatedAt"
         FROM "Product" 
-        WHERE "isActive" = true
+        WHERE "syncStatus" = 'ACTIVE'
         ORDER BY id ASC
       `;
 
@@ -131,12 +131,12 @@ export class DatabaseService {
           description,
           price,
           images,
-          "isActive",
+          "syncStatus",
           "createdAt",
           "updatedAt"
         FROM "Product" 
         WHERE id IN (${placeholders})
-        AND "isActive" = true
+        AND "syncStatus" = 'ACTIVE'
         ORDER BY id ASC
       `, ...convertedIds);
 
@@ -248,7 +248,7 @@ export class DatabaseService {
           ecommerceId: ecomId,
           sendpulseId: spId,
           name: name,
-          isActive: true
+          syncStatus: 'ACTIVE'
         }
       });
 
@@ -279,7 +279,7 @@ export class DatabaseService {
       const mapping = await this.crmDb.productMapping.findFirst({
         where: { 
           ecommerceId: id,
-          isActive: true 
+          syncStatus: 'ACTIVE' 
         }
       });
 
@@ -306,7 +306,7 @@ export class DatabaseService {
   async getAllProductMappings() {
     try {
       const mappings = await this.crmDb.productMapping.findMany({
-        where: { isActive: true },
+        where: { syncStatus: 'ACTIVE' },
         orderBy: { ecommerceId: 'asc' }
       });
 
