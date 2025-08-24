@@ -197,7 +197,7 @@ export const validateBotOrderOptional = (req, res, next) => {
 /**
  * Validate bot order data
  */
-/* export const validateBotOrder = (req, res, next) => {
+export const validateBotOrder = (req, res, next) => {
   const schema = Joi.object({
     // Source information
     source: Joi.string().valid('telegram', 'whatsapp', 'messenger', 'instagram', 'viber').required(),
@@ -285,7 +285,7 @@ export const validateBotOrderOptional = (req, res, next) => {
   });
 
   next();
-}; */
+};
 
 /**
  * Validate bot order status update
