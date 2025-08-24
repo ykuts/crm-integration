@@ -41,45 +41,16 @@ export class BotController {
         deliveryInfo,
         paymentMethod,
         notes,
-        contact_id, // Messenger external contact ID from telegram
+        contact_id,
         telegram_id
       } = orderData;
 
-      // Add fallbacks for missing required fields
-      const processedCustomerInfo = {
-        phone: customerInfo?.phone || null,
-        firstName: customerInfo?.firstName || 'TelegramUser',
-        lastName: customerInfo?.lastName || customerInfo?.username || 'Unknown',
-        email: customerInfo?.email || null
-      };
-
-      const processedDeliveryInfo = deliveryInfo || {
-        type: 'pickup_point',
-        city: 'Geneva',
-        canton: 'GE',
-        station: 'Geneva Central Station'
-      };
-
-      // Fill missing delivery fields
-      if (!processedDeliveryInfo.city) {
-        processedDeliveryInfo.city = 'Geneva';
-      }
-      if (!processedDeliveryInfo.station) {
-        processedDeliveryInfo.station = 'Geneva Central Station';
-      }
-      if (!processedDeliveryInfo.type) {
-        processedDeliveryInfo.type = 'pickup_point';
-      }
-
-      const processedPaymentMethod = paymentMethod || 'CASH';
-
-      logger.info('Processing telegram bot order', {
+      logger.info('Processing simplified telegram bot order', {
         botOrderId,
         source,
         chatId,
         contact_id,
-        telegram_id,
-        customerFirstName: processedCustomerInfo.firstName
+        telegram_id
       });
 
       // Step 1: Validate and enrich products
@@ -93,36 +64,17 @@ export class BotController {
 
       // Step 2: Find contact using messenger external ID
       let contact = null;
-
       if (contact_id) {
         contact = await this.findContactByMessengerExternalId(contact_id);
       }
 
-      // Fallback: create new contact if not found
       if (!contact) {
-        logger.info('Contact not found, creating new contact');
-
-        try {
-          contact = await this.createContact({
-            firstName: processedCustomerInfo.firstName,
-            lastName: processedCustomerInfo.lastName,
-            phone: processedCustomerInfo.phone,
-            email: processedCustomerInfo.email,
-            tags: ['telegram_bot', 'auto_created']
-          });
-
-          logger.info('New contact created', { contactId: contact.id });
-
-        } catch (createError) {
-          logger.error('Failed to create contact', { error: createError.message });
-          throw new Error(`Contact creation failed: ${createError.message}`);
-        }
+        throw new Error(`Contact with ID ${contact_id} not found in SendPulse`);
       }
 
-      logger.info('Contact ready for deal creation', {
+      logger.info('Contact found', {
         contactId: contact.id,
-        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
-        foundViaExternalId: !!contact_id
+        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
       });
 
       // Step 3: Create deal in SendPulse
@@ -132,13 +84,13 @@ export class BotController {
         currency: 'CHF',
         contact: contact,
         products: enrichedProducts,
-        delivery: processedDeliveryInfo,
+        delivery: deliveryInfo || {},
         source: 'telegram'
       });
 
       logger.info('Deal created', { dealId: deal.id, dealName: deal.name });
 
-      // Step 4: Add products to deal
+      // Step 4: Add products to deal (optional, continue on error)
       for (const product of enrichedProducts) {
         try {
           await this.addProductToDeal(deal.id, product);
@@ -154,29 +106,14 @@ export class BotController {
         }
       }
 
-      // Step 5: Save bot order mapping
-      const botOrderMapping = await this.dbService.saveBotOrder({
-        botOrderId,
-        source,
-        chatId,
-        sendpulseDealId: deal.id,
-        sendpulseContactId: contact.id, // Use real SendPulse ID
-        customerPhone: processedCustomerInfo.phone || `telegram_${telegram_id}`,
-        customerName: `${processedCustomerInfo.firstName} ${processedCustomerInfo.lastName}`.trim(),
-        totalAmount: totalAmount,
-        paymentMethod: processedPaymentMethod,
-        deliveryInfo: processedDeliveryInfo,
-        notes: notes || `Telegram order from @${customerInfo?.username || telegram_id}`,
-        products: enrichedProducts
-      });
+      // REMOVED: Step 5 - No local database save
 
       logger.info('Telegram order completed successfully', {
         botOrderId,
         dealId: deal.id,
-        contactId: contact.id, // Real SendPulse ID
-        externalContactId: contact_id, // Telegram messenger ID
-        totalAmount,
-        mappingId: botOrderMapping.id
+        contactId: contact.id,
+        externalContactId: contact_id,
+        totalAmount
       });
 
       return {
@@ -188,11 +125,11 @@ export class BotController {
         totalAmount: totalAmount,
         contactId: contact.id,
         externalContactId: contact_id,
-        message: 'Telegram order successfully created in SendPulse CRM'
+        message: 'Telegram order successfully created in SendPulse CRM (no local save)'
       };
 
     } catch (error) {
-      logger.error('Telegram bot order creation failed', {
+      logger.error('Simplified telegram bot order creation failed', {
         error: error.message,
         stack: error.stack,
         botOrderId: orderData.botOrderId,

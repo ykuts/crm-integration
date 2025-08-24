@@ -7,7 +7,7 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 
 // Import routes
-import botRoutes from './routes/botRoutes.js';
+import telegramBotRoutes from './routes/telegramBotRoutes.js';
 //import webhookRoutes from './routes/webhookRoutes.js';
 //import syncRoutes from './routes/syncRoutes.js';
 
@@ -83,7 +83,7 @@ app.get('/health', (req, res) => {
 });
 
 // Routes - REMOVE authMiddleware since botRoutes has its own validateApiKey
-app.use('/api/bot', botRoutes); // FIXED: Removed authMiddleware
+app.use('/api/bot', telegramBotRoutes); // FIXED: Removed authMiddleware
 //app.use('/api/webhook', webhookRoutes); // No auth for webhooks (signature validation instead)
 //app.use('/api/sync', authMiddleware, syncRoutes);
 

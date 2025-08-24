@@ -1,4 +1,4 @@
-// Final Test - Create Telegram Order with Working Contact Lookup
+// Clean Telegram Order Test - No local DB save
 import axios from 'axios';
 import dotenv from 'dotenv';
 
@@ -7,78 +7,55 @@ dotenv.config();
 const API_BASE_URL = process.env.API_BASE_URL || 'https://crm-integration-production.up.railway.app';
 const API_KEY = process.env.BOT_API_KEY;
 
-async function testWorkingTelegramOrder() {
-  console.log('🚀 Testing Working Telegram Order Creation');
-  console.log('==========================================\n');
+async function testCleanTelegramOrder() {
+  console.log('Testing Clean Telegram Order Creation');
+  console.log('====================================\n');
 
   try {
-    // Use your real telegram data with correct structure
+    // Minimal telegram order data
     const telegramOrderData = {
-      // Required API fields
       source: 'telegram',
-      chatId: '5955533219', // telegram_id
-      botOrderId: '68949854e2fdd9cf5f06ef10', // bot_id from your logs
-      
-      // Telegram contact data
-      contact_id: '68aa34e085b07ce3d604bd4d', // Messenger external ID
+      contact_id: '68aa34e085b07ce3d604bd4d', // This works!
       telegram_id: '5955533219',
       
-      // Customer info from telegram
       customerInfo: {
         firstName: 'Yulia',
-        lastName: '', // Empty in your logs
         username: 'julia_kuts_1'
       },
       
-      // Product data
       products: [
         {
-          id: 3, // product_id_num from your logs
-          quantity: 2 // quantity from your logs
+          id: 3,
+          quantity: 2
         }
       ],
       
-      // Use defaults for delivery (will be filled by fallbacks)
-      deliveryInfo: {
-        type: 'pickup_point',
-        city: 'Geneva',
-        canton: 'GE',
-        station: 'Geneva Central Station'
-      },
-      
-      // Payment method
-      paymentMethod: 'CASH',
-      
-      // Notes
-      notes: 'Telegram order from Syrnyk bot - User: @julia_kuts_1'
+      notes: 'Clean telegram order test'
     };
 
-    console.log('📱 Telegram order data:');
+    console.log('Telegram order data:');
     console.log(JSON.stringify(telegramOrderData, null, 2));
 
-    // Create the order
-    console.log('\n📦 Creating telegram order...');
+    console.log('\nCreating clean telegram order...');
     
-    const response = await axios.post(`${API_BASE_URL}/api/bot/test-order`, telegramOrderData, {
+    const response = await axios.post(`${API_BASE_URL}/api/bot/telegram-order`, telegramOrderData, {
       headers: {
         'x-api-key': API_KEY,
         'Content-Type': 'application/json'
       }
     });
 
-    console.log('✅ TELEGRAM ORDER CREATED SUCCESSFULLY! 🎉');
+    console.log('SUCCESS! Clean telegram order created');
     console.log('Response:');
     console.log(JSON.stringify(response.data, null, 2));
 
-    // Verify the order details
     const orderDetails = response.data;
-    console.log('\n📋 Order Summary:');
+    console.log('\nOrder Summary:');
     console.log(`- Bot Order ID: ${orderDetails.botOrderId}`);
-    console.log(`- CRM Order ID: ${orderDetails.crmOrderId}`);
+    console.log(`- SendPulse Deal ID: ${orderDetails.crmOrderId}`);
     console.log(`- Order Number: ${orderDetails.orderNumber}`);
     console.log(`- Total Amount: ${orderDetails.totalAmount} CHF`);
     console.log(`- Contact ID: ${orderDetails.contactId}`);
-    console.log(`- External Contact ID: ${orderDetails.externalContactId}`);
     console.log(`- Status: ${orderDetails.status}`);
 
     return {
@@ -87,96 +64,79 @@ async function testWorkingTelegramOrder() {
     };
 
   } catch (error) {
-    console.log('❌ TELEGRAM ORDER FAILED');
+    console.log('FAILED - Clean telegram order creation failed');
     console.log('Status:', error.response?.status);
     console.log('Error details:');
     console.log(JSON.stringify(error.response?.data, null, 2));
     
-    // Analyze the error
-    const errorData = error.response?.data;
-    if (errorData?.code === 'VALIDATION_ERROR') {
-      console.log('\n🔍 Validation errors:');
-      errorData.details?.forEach(detail => {
-        console.log(`- ${detail.field}: ${detail.message}`);
-      });
-    }
-    
     return {
       success: false,
-      error: errorData || error.message
+      error: error.response?.data || error.message
     };
   }
 }
 
-async function testMinimalTelegramOrder() {
-  console.log('\n🔧 Testing Minimal Telegram Order (Fallback)');
-  console.log('==============================================\n');
+async function testTelegramHealth() {
+  console.log('Testing Telegram Health Check');
+  console.log('=============================\n');
 
   try {
-    // Absolute minimum required fields
-    const minimalData = {
-      source: 'telegram',
-      chatId: '5955533219',
-      botOrderId: `minimal_${Date.now()}`,
-      contact_id: '68aa34e085b07ce3d604bd4d', // This we know works!
-      
-      customerInfo: {
-        firstName: 'Yulia'
-      },
-      
-      products: [
-        {
-          id: 3,
-          quantity: 2
-        }
-      ]
-    };
-
-    console.log('📱 Minimal data:');
-    console.log(JSON.stringify(minimalData, null, 2));
-
-    const response = await axios.post(`${API_BASE_URL}/api/bot/test-order`, minimalData, {
+    const response = await axios.get(`${API_BASE_URL}/api/bot/telegram-health`, {
       headers: {
-        'x-api-key': API_KEY,
-        'Content-Type': 'application/json'
+        'x-api-key': API_KEY
       }
     });
 
-    console.log('✅ MINIMAL ORDER CREATED! 🎉');
+    console.log('Health check response:');
     console.log(JSON.stringify(response.data, null, 2));
 
     return response.data;
 
   } catch (error) {
-    console.log('❌ Minimal order failed');
+    console.log('Health check failed');
     console.log('Status:', error.response?.status);
     console.log('Error:', JSON.stringify(error.response?.data, null, 2));
-    throw error;
+    
+    return {
+      status: 'failed',
+      error: error.response?.data || error.message
+    };
   }
 }
 
-// Run the working test
-async function runWorkingTest() {
+// Run clean tests
+async function runCleanTests() {
   try {
-    console.log('🎯 RUNNING WORKING TELEGRAM ORDER TEST');
-    console.log('=====================================');
+    console.log('RUNNING CLEAN TELEGRAM TESTS');
+    console.log('============================');
     
-    // Test with full data first
-    const result = await testWorkingTelegramOrder();
+    // Test 1: Health check
+    console.log('\nTest 1: Health Check');
+    const healthResult = await testTelegramHealth();
     
-    if (result.success) {
-      console.log('\n🎉 SUCCESS! Your telegram bot integration is working!');
-      console.log('The order has been created in SendPulse CRM.');
+    if (healthResult.status === 'healthy') {
+      console.log('Health check passed, proceeding with order test...');
+      
+      // Test 2: Create order
+      console.log('\nTest 2: Order Creation');
+      const orderResult = await testCleanTelegramOrder();
+      
+      if (orderResult.success) {
+        console.log('\nSUCCESS! Clean telegram integration is working');
+        console.log('The order was created directly in SendPulse CRM');
+        console.log('No local database issues');
+      } else {
+        console.log('\nOrder creation failed');
+      }
     } else {
-      console.log('\n⚠️ Full test failed, trying minimal version...');
-      await testMinimalTelegramOrder();
+      console.log('Health check failed, skipping order test');
     }
     
   } catch (error) {
-    console.log('\n💥 All tests failed');
+    console.log('\nAll tests failed');
     console.log('Final error:', error.message);
   }
 }
 
-// Execute the working test
-runWorkingTest();
+// Execute clean tests
+runCleanTests();
