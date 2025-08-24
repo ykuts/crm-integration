@@ -27,119 +27,204 @@ export class BotController {
     return this.accessToken;
   }
 
-  /**
- * Updated createOrder method with working contact lookup
- */
-  async createOrder(orderData) {
-    try {
-      const {
-        source,
-        chatId,
-        botOrderId,
-        customerInfo,
-        products,
-        deliveryInfo,
-        paymentMethod,
-        notes,
-        contact_id,
-        telegram_id
-      } = orderData;
+ async createDeal(dealData) {
+  try {
+    logger.info('Creating deal with attributes', { 
+      title: dealData.title,
+      price: dealData.price,
+      contactId: dealData.contact.id
+    });
 
-      logger.info('Processing simplified telegram bot order', {
-        botOrderId,
-        source,
-        chatId,
-        contact_id,
-        telegram_id
-      });
+    // Build attributes from order data
+    const attributes = [
+      { attributeId: 922104, value: `${dealData.delivery?.city || 'Unknown'}, ${dealData.delivery?.station || 'Unknown'}` },
+      { attributeId: 922108, value: dealData.orderAttributes?.order_text || dealData.products.map(p => `${p.name} x${p.quantity}`).join(', ') },
+      { attributeId: 922119, value: dealData.orderAttributes?.question || "Не указано" },
+      { attributeId: 922130, value: "Не оплачено" },
+      { attributeId: 922253, value: dealData.delivery?.station || 'Unknown' },
+      { attributeId: 922255, value: `${dealData.delivery?.city || 'Unknown'}, ${dealData.delivery?.canton || 'Unknown'}` },
+      { attributeId: 922259, value: dealData.orderAttributes?.sum || dealData.price.toString() },
+      { attributeId: 923272, value: dealData.orderAttributes?.order_text || dealData.products.map(p => `${p.name} x${p.quantity}`).join(', ') },
+      { attributeId: 923273, value: dealData.orderAttributes?.language || "uk" },
+      { attributeId: 923274, value: dealData.orderAttributes?.fullname || `${dealData.contact.firstName || ''} ${dealData.contact.lastName || ''}`.trim() },
+      { attributeId: 923275, value: dealData.delivery?.canton || 'Unknown' },
+      { attributeId: 923276, value: dealData.delivery?.city || 'Unknown' },
+      { attributeId: 923277, value: dealData.delivery?.station || 'Unknown' },
+      { attributeId: 923278, value: dealData.orderAttributes?.product_price_str || dealData.products.map(p => `${p.unitPrice} CHF`).join(', ') },
+      { attributeId: 923279, value: dealData.orderAttributes?.quantity || dealData.products.reduce((sum, p) => sum + p.quantity, 0).toString() },
+      { attributeId: 923428, value: dealData.orderAttributes?.question || "" },
+      { attributeId: 923605, value: dealData.orderAttributes?.sum || dealData.price.toString() },
+      { attributeId: 923606, value: dealData.orderAttributes?.product_price || dealData.products.map(p => p.unitPrice).join(', ') },
+      { attributeId: 923613, value: dealData.orderAttributes?.product_name || dealData.products.map(p => p.name).join(', ') },
+      { attributeId: 923614, value: dealData.orderAttributes?.tvorog_kg || "" }
+    ];
 
-      // Step 1: Validate and enrich products
-      const enrichedProducts = await this.enrichProductsWithPricing(products);
-      const totalAmount = enrichedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+    const dealRequest = {
+      pipelineId: parseInt(process.env.SENDPULSE_PIPELINE_ID) || 153270,
+      stepId: parseInt(process.env.SENDPULSE_STEP_ID) || 529997,
+      name: dealData.title,
+      price: dealData.price,
+      currency: dealData.currency,
+      contact: [dealData.contact.id],
+      attributes: attributes
+    };
 
-      logger.info('Products enriched', {
-        productCount: enrichedProducts.length,
-        totalAmount
-      });
+    logger.info('Sending deal request to SendPulse', {
+      pipelineId: dealRequest.pipelineId,
+      stepId: dealRequest.stepId,
+      contactId: dealData.contact.id,
+      attributesCount: attributes.length
+    });
 
-      // Step 2: Find contact using messenger external ID
-      let contact = null;
-      if (contact_id) {
-        contact = await this.findContactByMessengerExternalId(contact_id);
+    const response = await axios.post('https://api.sendpulse.com/crm/v1/deals', dealRequest, {
+      headers: {
+        'Authorization': `Bearer ${await this.ensureValidToken()}`,
+        'Content-Type': 'application/json'
       }
+    });
 
-      if (!contact) {
-        throw new Error(`Contact with ID ${contact_id} not found in SendPulse`);
-      }
-
-      logger.info('Contact found', {
-        contactId: contact.id,
-        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
-      });
-
-      // Step 3: Create deal in SendPulse
-      const deal = await this.createDeal({
-        title: `Telegram Order - ${enrichedProducts.map(p => p.name).join(', ')}`,
-        price: totalAmount,
-        currency: 'CHF',
-        contact: contact,
-        products: enrichedProducts,
-        delivery: deliveryInfo || {},
-        source: 'telegram'
-      });
-
-      logger.info('Deal created', { dealId: deal.id, dealName: deal.name });
-
-      // Step 4: Add products to deal (optional, continue on error)
-      for (const product of enrichedProducts) {
-        try {
-          await this.addProductToDeal(deal.id, product);
-          logger.debug('Product added to deal', {
-            productId: product.sendpulseId,
-            quantity: product.quantity
-          });
-        } catch (error) {
-          logger.warn('Failed to add product to deal, continuing', {
-            error: error.message,
-            productId: product.id
-          });
-        }
-      }
-
-      // REMOVED: Step 5 - No local database save
-
-      logger.info('Telegram order completed successfully', {
-        botOrderId,
-        dealId: deal.id,
-        contactId: contact.id,
-        externalContactId: contact_id,
-        totalAmount
-      });
-
-      return {
-        success: true,
-        botOrderId,
-        crmOrderId: deal.id,
-        orderNumber: `SP-${deal.id}`,
-        status: 'created',
-        totalAmount: totalAmount,
-        contactId: contact.id,
-        externalContactId: contact_id,
-        message: 'Telegram order successfully created in SendPulse CRM (no local save)'
-      };
-
-    } catch (error) {
-      logger.error('Simplified telegram bot order creation failed', {
-        error: error.message,
-        stack: error.stack,
-        botOrderId: orderData.botOrderId,
-        contact_id: orderData.contact_id,
-        telegram_id: orderData.telegram_id
-      });
-
-      throw new Error(`Order creation failed: ${error.message}`);
+    const dealId = response.data?.data?.id;
+    if (!dealId) {
+      throw new Error('Deal ID not found in response');
     }
+
+    logger.info('Deal created successfully with attributes', {
+      dealId: dealId,
+      dealName: dealRequest.name,
+      attributesApplied: attributes.length
+    });
+
+    return {
+      ...response.data.data,
+      id: dealId
+    };
+
+  } catch (error) {
+    logger.error('Create deal failed', {
+      error: error.message,
+      response: error.response?.data,
+      dealTitle: dealData.title
+    });
+    throw error;
   }
+}
+
+async createOrder(orderData) {
+  try {
+    const {
+      source,
+      chatId,
+      botOrderId,
+      customerInfo,
+      products,
+      deliveryInfo,
+      paymentMethod,
+      notes,
+      contact_id,
+      telegram_id,
+      orderAttributes // New field with bot variables
+    } = orderData;
+
+    logger.info('Processing telegram bot order with attributes', { 
+      botOrderId, 
+      source, 
+      chatId,
+      contact_id,
+      telegram_id,
+      hasOrderAttributes: !!orderAttributes
+    });
+
+    // Step 1: Validate and enrich products
+    const enrichedProducts = await this.enrichProductsWithPricing(products);
+    const totalAmount = enrichedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+
+    logger.info('Products enriched', { 
+      productCount: enrichedProducts.length, 
+      totalAmount,
+      productNames: enrichedProducts.map(p => p.name)
+    });
+
+    // Step 2: Find contact using messenger external ID
+    let contact = null;
+    if (contact_id) {
+      contact = await this.findContactByMessengerExternalId(contact_id);
+    }
+
+    if (!contact) {
+      throw new Error(`Contact with ID ${contact_id} not found in SendPulse`);
+    }
+
+    logger.info('Contact found', { 
+      contactId: contact.id, 
+      name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
+    });
+
+    // Step 3: Create deal in SendPulse with attributes
+    const deal = await this.createDeal({
+      title: dealData.orderAttributes?.order_text || `Telegram Order - ${enrichedProducts.map(p => p.name).join(', ')}`,
+      price: parseFloat(orderAttributes?.sum) || totalAmount,
+      currency: 'CHF',
+      contact: contact,
+      products: enrichedProducts,
+      delivery: deliveryInfo || {},
+      source: 'telegram',
+      orderAttributes: orderAttributes || {} // Pass bot variables to deal creation
+    });
+
+    logger.info('Deal created with attributes', { 
+      dealId: deal.id, 
+      dealName: deal.name 
+    });
+
+    // Step 4: Add products to deal (optional)
+    for (const product of enrichedProducts) {
+      try {
+        await this.addProductToDeal(deal.id, product);
+        logger.debug('Product added to deal', { 
+          productId: product.sendpulseId, 
+          quantity: product.quantity 
+        });
+      } catch (error) {
+        logger.warn('Failed to add product to deal, continuing', {
+          error: error.message,
+          productId: product.id
+        });
+      }
+    }
+
+    logger.info('Telegram order completed successfully with attributes', {
+      botOrderId,
+      dealId: deal.id,
+      contactId: contact.id,
+      externalContactId: contact_id,
+      totalAmount: parseFloat(orderAttributes?.sum) || totalAmount
+    });
+
+    return {
+      success: true,
+      botOrderId,
+      crmOrderId: deal.id,
+      orderNumber: `SP-${deal.id}`,
+      status: 'created',
+      totalAmount: parseFloat(orderAttributes?.sum) || totalAmount,
+      contactId: contact.id,
+      externalContactId: contact_id,
+      attributesApplied: true,
+      message: 'Telegram order successfully created in SendPulse CRM with attributes'
+    };
+
+  } catch (error) {
+    logger.error('Enhanced telegram bot order creation failed', {
+      error: error.message,
+      stack: error.stack,
+      botOrderId: orderData.botOrderId,
+      contact_id: orderData.contact_id,
+      telegram_id: orderData.telegram_id
+    });
+
+    throw new Error(`Order creation failed: ${error.message}`);
+  }
+}
 
   async updateOrder(botOrderId, updateData) {
     try {

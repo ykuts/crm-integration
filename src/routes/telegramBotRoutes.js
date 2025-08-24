@@ -58,10 +58,10 @@ router.post('/telegram-order', async (req, res) => {
       },
       products: products,
       deliveryInfo: {
-        type: 'pickup_point',
-        city: 'Geneva',
-        canton: 'GE',
-        station: 'Geneva Central Station',
+        type: req.body.deliveryInfo?.type || 'PICKUP',
+        city: req.body.deliveryInfo?.city || 'Nyon',
+        canton: req.body.deliveryInfo?.canton || 'VD',
+        station: req.body.deliveryInfo?.station || 'Nyon',
         ...req.body.deliveryInfo
       },
       paymentMethod: req.body.paymentMethod || 'CASH',
