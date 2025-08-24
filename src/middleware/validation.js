@@ -67,9 +67,9 @@ export const validateBotOrder = (req, res, next) => {
 
     // Customer information
     customerInfo: Joi.object({
-      phone: Joi.string().pattern(/^\+?[\d\s\-\(\)]+$/).required(),
-      firstName: Joi.string().min(1).max(100).required(),
-      lastName: Joi.string().min(1).max(100).required(),
+      phone: Joi.string().pattern(/^\+?[\d\s\-\(\)]+$/).optional(),
+      firstName: Joi.string().min(1).max(100).optional(),
+      lastName: Joi.string().min(1).max(100).optional(),
       email: Joi.string().email().optional()
     }).required(),
 
@@ -84,8 +84,8 @@ export const validateBotOrder = (req, res, next) => {
 
     // Delivery information
     deliveryInfo: Joi.object({
-      type: Joi.string().valid('railway_station', 'pickup_point', 'home_delivery', 'office').required(),
-      city: Joi.string().min(2).max(100).required(),
+      type: Joi.string().valid('railway_station', 'pickup_point', 'home_delivery', 'office').optional(),
+      city: Joi.string().min(2).max(100).optional(),
       canton: Joi.string().length(2).optional(), // Swiss cantons: ZH, VD, etc.
       station: Joi.string().max(200).optional(),
       address: Joi.string().max(500).optional(),
@@ -94,7 +94,7 @@ export const validateBotOrder = (req, res, next) => {
     }).required(),
 
     // Payment information
-    paymentMethod: Joi.string().valid('CASH', 'CARD', 'BANK_TRANSFER', 'TWINT').required(),
+    paymentMethod: Joi.string().valid('CASH', 'CARD', 'BANK_TRANSFER', 'TWINT').optional(),
 
     // Additional information
     notes: Joi.string().max(2000).optional(),
