@@ -1,4 +1,4 @@
-// Database Service - Fixed version using raw queries for ecommerce DB
+// Database Service - Fixed version with proper type conversion
 import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger.js';
 
@@ -26,9 +26,19 @@ export class DatabaseService {
 
   // === ECOMMERCE DATABASE OPERATIONS (Using raw SQL) ===
 
+  /**
+   * Get single product by ID from ecommerce database
+   * FIXED: Properly convert productId to integer to avoid type mismatch
+   */
   async getEcommerceProduct(productId) {
     try {
-      // Use raw query to get product from ecommerce DB
+      // Convert productId to integer to avoid type mismatch
+      const id = parseInt(productId);
+      
+      if (isNaN(id)) {
+        throw new Error(`Invalid product ID: ${productId}. Must be a number.`);
+      }
+
       const products = await this.ecommerceDb.$queryRaw`
         SELECT 
           id,
@@ -36,24 +46,34 @@ export class DatabaseService {
           description,
           price,
           images,
+          stock,
           "isActive",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "categoryId"
         FROM "Product" 
-        WHERE id = ${productId}
+        WHERE id = ${id}
+        AND "isActive" = true
       `;
 
-      if (products.length === 0) {
-        throw new Error(`Product ${productId} not found in ecommerce database`);
+      if (!products || products.length === 0) {
+        throw new Error(`Product with ID ${productId} not found or not active`);
       }
 
-      const product = products[0];
-      logger.info('Ecommerce product retrieved', { productId, name: product.name });
-      return product;
+      const foundProduct = products[0];
+      
+      logger.info('Single ecommerce product retrieved', { 
+        productId: id, 
+        name: foundProduct.name,
+        price: foundProduct.price 
+      });
+      
+      return foundProduct;
     } catch (error) {
-      logger.error('Failed to get ecommerce product', {
+      logger.error('Failed to get single ecommerce product', {
         error: error.message,
-        productId
+        productId,
+        convertedId: parseInt(productId)
       });
       throw error;
     }
@@ -73,6 +93,7 @@ export class DatabaseService {
           "createdAt",
           "updatedAt"
         FROM "Product" 
+        WHERE "isActive" = true
         ORDER BY id ASC
       `;
 
@@ -91,8 +112,17 @@ export class DatabaseService {
     try {
       if (productIds.length === 0) return [];
 
+      // Convert all IDs to integers
+      const convertedIds = productIds.map(id => {
+        const convertedId = parseInt(id);
+        if (isNaN(convertedId)) {
+          throw new Error(`Invalid product ID: ${id}. Must be a number.`);
+        }
+        return convertedId;
+      });
+
       // Create placeholders for IN clause
-      const placeholders = productIds.map(() => '?').join(',');
+      const placeholders = convertedIds.map(() => '?').join(',');
       
       const products = await this.ecommerceDb.$queryRawUnsafe(`
         SELECT 
@@ -106,8 +136,9 @@ export class DatabaseService {
           "updatedAt"
         FROM "Product" 
         WHERE id IN (${placeholders})
+        AND "isActive" = true
         ORDER BY id ASC
-      `, ...productIds);
+      `, ...convertedIds);
 
       logger.info('Ecommerce products by IDs retrieved', { 
         requestedCount: productIds.length,
@@ -124,75 +155,106 @@ export class DatabaseService {
     }
   }
 
-  /**
- * Get single product by ID from ecommerce database
- */
-async getEcommerceProduct(productId) {
-  try {
-    const product = await this.ecommerceDb.$queryRaw`
-      SELECT 
-        id,
-        name,
-        description,
-        price,
-        images,
-        stock,
-        "isActive",
-        "createdAt",
-        "updatedAt",
-        "categoryId"
-      FROM "Product" 
-      WHERE id = ${productId}
-      AND "isActive" = true
-    `;
+  // === CRM DATABASE OPERATIONS ===
 
-    if (!product || product.length === 0) {
-      throw new Error(`Product with ID ${productId} not found or not active`);
-    }
-
-    const foundProduct = product[0];
-    
-    logger.info('Single ecommerce product retrieved', { 
-      productId, 
-      name: foundProduct.name,
-      price: foundProduct.price 
-    });
-    
-    return foundProduct;
-  } catch (error) {
-    logger.error('Failed to get single ecommerce product', {
-      error: error.message,
-      productId
-    });
-    throw error;
-  }
-}
-
-  // === PRODUCT MAPPING OPERATIONS ===
-
-  async saveProductMapping(ecommerceId, sendpulseId, name = null) {
+  async saveBotOrder(orderData) {
     try {
-      const mapping = await this.crmDb.productMapping.upsert({
-        where: { ecommerceId },
-        update: {
-          sendpulseId,
-          name,
-          lastSyncAt: new Date(),
-          syncStatus: 'SYNCED'
-        },
-        create: {
-          ecommerceId,
-          sendpulseId,
-          name,
-          lastSyncAt: new Date(),
-          syncStatus: 'SYNCED'
+      const order = await this.crmDb.botOrder.create({
+        data: {
+          botOrderId: orderData.botOrderId,
+          source: orderData.source,
+          chatId: orderData.chatId,
+          sendpulseDealId: orderData.sendpulseDealId,
+          sendpulseContactId: orderData.sendpulseContactId,
+          customerPhone: orderData.customerPhone,
+          customerName: orderData.customerName,
+          totalAmount: parseFloat(orderData.totalAmount),
+          paymentMethod: orderData.paymentMethod,
+          deliveryInfo: JSON.stringify(orderData.deliveryInfo),
+          notes: orderData.notes,
+          products: JSON.stringify(orderData.products),
+          status: 'created'
         }
       });
 
-      logger.info('Product mapping saved', {
-        ecommerceId,
-        sendpulseId,
-        mappingId: mapping.id
+      logger.info('Bot order saved', { 
+        botOrderId: orderData.botOrderId,
+        crmId: order.id 
+      });
+
+      return order;
+    } catch (error) {
+      logger.error('Failed to save bot order', {
+        error: error.message,
+        botOrderId: orderData.botOrderId
+      });
+      throw error;
+    }
+  }
+
+  async getBotOrder(botOrderId) {
+    try {
+      const order = await this.crmDb.botOrder.findFirst({
+        where: { botOrderId: botOrderId }
+      });
+
+      if (!order) {
+        throw new Error(`Bot order ${botOrderId} not found`);
+      }
+
+      logger.info('Bot order retrieved', { botOrderId });
+      return order;
+    } catch (error) {
+      logger.error('Failed to get bot order', {
+        error: error.message,
+        botOrderId
+      });
+      throw error;
+    }
+  }
+
+  async updateBotOrder(botOrderId, updateData) {
+    try {
+      const updatedOrder = await this.crmDb.botOrder.update({
+        where: { botOrderId: botOrderId },
+        data: updateData
+      });
+
+      logger.info('Bot order updated', { botOrderId });
+      return updatedOrder;
+    } catch (error) {
+      logger.error('Failed to update bot order', {
+        error: error.message,
+        botOrderId
+      });
+      throw error;
+    }
+  }
+
+  // === PRODUCT MAPPING OPERATIONS ===
+
+  async saveProductMapping(ecommerceId, sendpulseId, name) {
+    try {
+      // Convert IDs to proper types
+      const ecomId = parseInt(ecommerceId);
+      const spId = parseInt(sendpulseId);
+      
+      if (isNaN(ecomId) || isNaN(spId)) {
+        throw new Error('Both ecommerceId and sendpulseId must be valid numbers');
+      }
+
+      const mapping = await this.crmDb.productMapping.create({
+        data: {
+          ecommerceId: ecomId,
+          sendpulseId: spId,
+          name: name,
+          isActive: true
+        }
+      });
+
+      logger.info('Product mapping saved', { 
+        ecommerceId: ecomId, 
+        sendpulseId: spId 
       });
 
       return mapping;
@@ -208,8 +270,27 @@ async getEcommerceProduct(productId) {
 
   async getProductMapping(ecommerceId) {
     try {
-      const mapping = await this.crmDb.productMapping.findUnique({
-        where: { ecommerceId }
+      const id = parseInt(ecommerceId);
+      
+      if (isNaN(id)) {
+        throw new Error(`Invalid ecommerce ID: ${ecommerceId}. Must be a number.`);
+      }
+
+      const mapping = await this.crmDb.productMapping.findFirst({
+        where: { 
+          ecommerceId: id,
+          isActive: true 
+        }
+      });
+
+      if (!mapping) {
+        logger.warn('Product mapping not found', { ecommerceId: id });
+        return null;
+      }
+
+      logger.debug('Product mapping retrieved', { 
+        ecommerceId: id, 
+        sendpulseId: mapping.sendpulseId 
       });
 
       return mapping;
@@ -225,9 +306,8 @@ async getEcommerceProduct(productId) {
   async getAllProductMappings() {
     try {
       const mappings = await this.crmDb.productMapping.findMany({
-        orderBy: {
-          ecommerceId: 'asc'
-        }
+        where: { isActive: true },
+        orderBy: { ecommerceId: 'asc' }
       });
 
       logger.info('All product mappings retrieved', { count: mappings.length });
@@ -240,250 +320,36 @@ async getEcommerceProduct(productId) {
     }
   }
 
-  // Get products with their SendPulse mappings
   async getProductsWithMappings() {
     try {
-      const ecommerceProducts = await this.getAllEcommerceProducts();
       const mappings = await this.getAllProductMappings();
+      const productsWithMappings = [];
 
-      // Create mapping lookup
-      const mappingMap = new Map(
-        mappings.map(m => [m.ecommerceId, m])
-      );
+      for (const mapping of mappings) {
+        try {
+          const ecommerceProduct = await this.getEcommerceProduct(mapping.ecommerceId);
+          
+          productsWithMappings.push({
+            ...ecommerceProduct,
+            sendpulseId: mapping.sendpulseId,
+            isSyncedToSendPulse: true
+          });
+        } catch (error) {
+          logger.warn('Failed to get ecommerce product for mapping', {
+            mappingId: mapping.id,
+            ecommerceId: mapping.ecommerceId,
+            error: error.message
+          });
+        }
+      }
 
-      // Enrich products with mapping data
-      const enrichedProducts = ecommerceProducts.map(product => ({
-        ...product,
-        mapping: mappingMap.get(product.id) || null,
-        isSyncedToSendPulse: mappingMap.has(product.id),
-        sendpulseId: mappingMap.get(product.id)?.sendpulseId || null
-      }));
-
-      logger.info('Products with mappings retrieved', { 
-        totalProducts: ecommerceProducts.length,
-        mappedProducts: mappings.length 
-      });
-
-      return enrichedProducts;
+      logger.info('Products with mappings retrieved', { count: productsWithMappings.length });
+      return productsWithMappings;
     } catch (error) {
       logger.error('Failed to get products with mappings', {
         error: error.message
       });
       throw error;
-    }
-  }
-
-  // === CUSTOMER MAPPING OPERATIONS ===
-
-  async saveCustomerMapping(sendpulseId, phone, source, ecommerceId = null) {
-    try {
-      const mapping = await this.crmDb.customerMapping.create({
-        data: {
-          ecommerceId,
-          sendpulseId,
-          phone,
-          source
-        }
-      });
-
-      logger.info('Customer mapping saved', {
-        sendpulseId,
-        phone,
-        source,
-        mappingId: mapping.id
-      });
-
-      return mapping;
-    } catch (error) {
-      logger.error('Failed to save customer mapping', {
-        error: error.message,
-        sendpulseId,
-        phone
-      });
-      throw error;
-    }
-  }
-
-  async findCustomerMappingByPhone(phone) {
-    try {
-      const mapping = await this.crmDb.customerMapping.findFirst({
-        where: { phone }
-      });
-
-      return mapping;
-    } catch (error) {
-      logger.error('Failed to find customer mapping by phone', {
-        error: error.message,
-        phone
-      });
-      throw error;
-    }
-  }
-
-  // === BOT ORDER OPERATIONS ===
-
-  async saveBotOrder(orderData) {
-    try {
-      const {
-        botOrderId,
-        source,
-        chatId,
-        sendpulseDealId,
-        sendpulseContactId,
-        customerPhone,
-        customerName,
-        totalAmount,
-        paymentMethod,
-        deliveryInfo,
-        notes,
-        products
-      } = orderData;
-
-      const botOrder = await this.crmDb.botOrder.create({
-        data: {
-          botOrderId,
-          source,
-          chatId,
-          sendpulseDealId,
-          sendpulseContactId,
-          customerPhone,
-          customerName,
-          totalAmount,
-          paymentMethod,
-          deliveryInfo: deliveryInfo ? JSON.stringify(deliveryInfo) : null,
-          notes,
-          products: JSON.stringify(products),
-          status: 'CREATED'
-        }
-      });
-
-      // Save order products details
-      if (products && products.length > 0) {
-        await this.saveBotOrderProducts(botOrder.id, products);
-      }
-
-      logger.info('Bot order saved', {
-        botOrderId,
-        orderId: botOrder.id,
-        sendpulseDealId
-      });
-
-      return botOrder;
-    } catch (error) {
-      logger.error('Failed to save bot order', {
-        error: error.message,
-        botOrderId: orderData.botOrderId
-      });
-      throw error;
-    }
-  }
-
-  async saveBotOrderProducts(botOrderId, products) {
-    try {
-      const orderProducts = [];
-
-      for (const product of products) {
-        const mapping = await this.getProductMapping(product.id);
-        
-        orderProducts.push({
-          botOrderId,
-          ecommerceProductId: product.id,
-          sendpulseProductId: mapping?.sendpulseId || null,
-          quantity: product.quantity,
-          unitPrice: product.unitPrice,
-          totalPrice: product.totalPrice
-        });
-      }
-
-      if (orderProducts.length > 0) {
-        await this.crmDb.botOrderProduct.createMany({
-          data: orderProducts
-        });
-      }
-
-      logger.info('Bot order products saved', {
-        botOrderId,
-        productCount: orderProducts.length
-      });
-
-      return orderProducts;
-    } catch (error) {
-      logger.error('Failed to save bot order products', {
-        error: error.message,
-        botOrderId
-      });
-      throw error;
-    }
-  }
-
-  async getBotOrder(botOrderId) {
-    try {
-      const botOrder = await this.crmDb.botOrder.findUnique({
-        where: { botOrderId },
-        include: {
-          orderProducts: true
-        }
-      });
-
-      return botOrder;
-    } catch (error) {
-      logger.error('Failed to get bot order', {
-        error: error.message,
-        botOrderId
-      });
-      throw error;
-    }
-  }
-
-  async updateBotOrderStatus(botOrderId, status, errorMessage = null) {
-    try {
-      const updatedOrder = await this.crmDb.botOrder.update({
-        where: { botOrderId },
-        data: {
-          status,
-          errorMessage
-        }
-      });
-
-      logger.info('Bot order status updated', {
-        botOrderId,
-        status
-      });
-
-      return updatedOrder;
-    } catch (error) {
-      logger.error('Failed to update bot order status', {
-        error: error.message,
-        botOrderId,
-        status
-      });
-      throw error;
-    }
-  }
-
-  // === SYNC LOG OPERATIONS ===
-
-  async logSyncOperation(operation, entityType, entityId, status, message, details = null, duration = null) {
-    try {
-      const log = await this.crmDb.syncLog.create({
-        data: {
-          operation,
-          entityType,
-          entityId,
-          status,
-          message,
-          details: details ? JSON.stringify(details) : null,
-          duration
-        }
-      });
-
-      return log;
-    } catch (error) {
-      logger.error('Failed to log sync operation', {
-        error: error.message,
-        operation
-      });
-      // Don't throw error for logging failures
     }
   }
 

@@ -1,4 +1,4 @@
-// Clean Telegram Bot Routes - Minimal working version
+// Fixed Telegram Bot Routes - Properly convert product IDs
 import express from 'express';
 import { BotController } from '../controllers/botController.js';
 import { validateApiKey } from '../middleware/validation.js';
@@ -11,7 +11,7 @@ const botController = new BotController();
 router.use(validateApiKey);
 
 /**
- * Create telegram order - simplified version without local DB save
+ * Create telegram order - fixed version with proper ID conversion
  */
 router.post('/telegram-order', async (req, res) => {
   const startTime = Date.now();
@@ -44,6 +44,50 @@ router.post('/telegram-order', async (req, res) => {
       });
     }
 
+    // FIXED: Convert product IDs to integers and validate
+    const processedProducts = products.map(product => {
+      // Convert ID to integer - handle both string and number inputs
+      let productId;
+      if (typeof product.id === 'string') {
+        productId = parseInt(product.id, 10);
+      } else if (typeof product.id === 'number') {
+        productId = product.id;
+      } else {
+        throw new Error(`Invalid product ID type: ${typeof product.id}. Expected string or number.`);
+      }
+
+      // Validate converted ID
+      if (isNaN(productId) || productId <= 0) {
+        throw new Error(`Invalid product ID: ${product.id}. Must be a positive integer.`);
+      }
+
+      // Convert quantity to integer
+      let quantity;
+      if (typeof product.quantity === 'string') {
+        quantity = parseInt(product.quantity, 10);
+      } else if (typeof product.quantity === 'number') {
+        quantity = product.quantity;
+      } else {
+        throw new Error(`Invalid quantity type: ${typeof product.quantity}. Expected string or number.`);
+      }
+
+      // Validate quantity
+      if (isNaN(quantity) || quantity <= 0) {
+        throw new Error(`Invalid quantity: ${product.quantity}. Must be a positive integer.`);
+      }
+
+      return {
+        id: productId,
+        quantity: quantity,
+        notes: product.notes || null
+      };
+    });
+
+    logger.info('Products processed and validated', {
+      originalProducts: products,
+      processedProducts: processedProducts
+    });
+
     // Add defaults for missing fields
     const processedOrder = {
       source: 'telegram',
@@ -54,25 +98,30 @@ router.post('/telegram-order', async (req, res) => {
       customerInfo: {
         firstName: req.body.customerInfo?.firstName || 'TelegramUser',
         lastName: req.body.customerInfo?.lastName || req.body.customerInfo?.username || 'Unknown',
-        phone: req.body.customerInfo?.phone || null
+        phone: req.body.customerInfo?.phone || null,
+        username: req.body.customerInfo?.username || null
       },
-      products: products,
+      products: processedProducts, // Use processed products with proper types
       deliveryInfo: {
-        type: req.body.deliveryInfo?.type || 'PICKUP',
+        type: req.body.deliveryInfo?.type || 'railway_station',
         city: req.body.deliveryInfo?.city || 'Nyon',
         canton: req.body.deliveryInfo?.canton || 'VD',
         station: req.body.deliveryInfo?.station || 'Nyon',
         ...req.body.deliveryInfo
       },
       paymentMethod: req.body.paymentMethod || 'CASH',
-      notes: req.body.notes || `Telegram order from ${req.body.customerInfo?.username || req.body.telegram_id}`
+      notes: req.body.notes || `Telegram order from ${req.body.customerInfo?.username || req.body.telegram_id}`,
+      // Pass through all the orderAttributes from SendPulse bot variables
+      orderAttributes: req.body.orderAttributes || {}
     };
 
     logger.info('Telegram order creation request', {
       contact_id: processedOrder.contact_id,
       telegram_id: processedOrder.telegram_id,
       productCount: processedOrder.products.length,
-      customerName: `${processedOrder.customerInfo.firstName} ${processedOrder.customerInfo.lastName}`
+      customerName: `${processedOrder.customerInfo.firstName} ${processedOrder.customerInfo.lastName}`,
+      productIds: processedOrder.products.map(p => p.id),
+      hasOrderAttributes: Object.keys(processedOrder.orderAttributes).length > 0
     });
 
     const result = await botController.createOrder(processedOrder);
@@ -93,6 +142,7 @@ router.post('/telegram-order', async (req, res) => {
       error: error.message,
       stack: error.stack,
       contact_id: req.body.contact_id,
+      requestBody: JSON.stringify(req.body, null, 2),
       duration: `${duration}ms`
     });
 
@@ -100,7 +150,13 @@ router.post('/telegram-order', async (req, res) => {
     let errorMessage = 'Telegram order creation failed';
     let statusCode = 500;
 
-    if (error.message.includes('not found')) {
+    if (error.message.includes('Invalid product ID')) {
+      errorMessage = 'Invalid product ID provided';
+      statusCode = 400;
+    } else if (error.message.includes('Invalid quantity')) {
+      errorMessage = 'Invalid quantity provided';
+      statusCode = 400;
+    } else if (error.message.includes('not found')) {
       errorMessage = 'Contact or product not found';
       statusCode = 404;
     } else if (error.message.includes('not mapped')) {
@@ -146,6 +202,58 @@ router.get('/telegram-health', async (req, res) => {
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       error: error.message
+    });
+  }
+});
+
+/**
+ * Test endpoint to validate product ID conversion
+ */
+router.post('/test-product-conversion', validateApiKey, async (req, res) => {
+  try {
+    const { products } = req.body;
+    
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Products array is required'
+      });
+    }
+
+    const processedProducts = products.map(product => {
+      let productId;
+      if (typeof product.id === 'string') {
+        productId = parseInt(product.id, 10);
+      } else if (typeof product.id === 'number') {
+        productId = product.id;
+      } else {
+        throw new Error(`Invalid product ID type: ${typeof product.id}`);
+      }
+
+      if (isNaN(productId) || productId <= 0) {
+        throw new Error(`Invalid product ID: ${product.id}`);
+      }
+
+      return {
+        original: product,
+        processed: {
+          id: productId,
+          quantity: parseInt(product.quantity) || 1
+        }
+      };
+    });
+
+    res.json({
+      success: true,
+      message: 'Product conversion test successful',
+      results: processedProducts
+    });
+
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message,
+      code: 'PRODUCT_CONVERSION_FAILED'
     });
   }
 });
