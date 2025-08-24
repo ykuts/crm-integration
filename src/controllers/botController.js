@@ -23,10 +23,13 @@ export class BotController {
 
     this.accessToken = response.data.access_token;
     this.tokenExpiry = new Date(Date.now() + (response.data.expires_in - 60) * 1000);
-    
+
     return this.accessToken;
   }
 
+  /**
+ * Updated createOrder method with working contact lookup
+ */
   async createOrder(orderData) {
     try {
       const {
@@ -37,51 +40,118 @@ export class BotController {
         products,
         deliveryInfo,
         paymentMethod,
-        notes
+        notes,
+        contact_id, // Messenger external contact ID from telegram
+        telegram_id
       } = orderData;
 
-      logger.info('Processing bot order', { botOrderId, source, customerPhone: customerInfo.phone });
+      // Add fallbacks for missing required fields
+      const processedCustomerInfo = {
+        phone: customerInfo?.phone || null,
+        firstName: customerInfo?.firstName || 'TelegramUser',
+        lastName: customerInfo?.lastName || customerInfo?.username || 'Unknown',
+        email: customerInfo?.email || null
+      };
+
+      const processedDeliveryInfo = deliveryInfo || {
+        type: 'pickup_point',
+        city: 'Geneva',
+        canton: 'GE',
+        station: 'Geneva Central Station'
+      };
+
+      // Fill missing delivery fields
+      if (!processedDeliveryInfo.city) {
+        processedDeliveryInfo.city = 'Geneva';
+      }
+      if (!processedDeliveryInfo.station) {
+        processedDeliveryInfo.station = 'Geneva Central Station';
+      }
+      if (!processedDeliveryInfo.type) {
+        processedDeliveryInfo.type = 'pickup_point';
+      }
+
+      const processedPaymentMethod = paymentMethod || 'CASH';
+
+      logger.info('Processing telegram bot order', {
+        botOrderId,
+        source,
+        chatId,
+        contact_id,
+        telegram_id,
+        customerFirstName: processedCustomerInfo.firstName
+      });
 
       // Step 1: Validate and enrich products
       const enrichedProducts = await this.enrichProductsWithPricing(products);
       const totalAmount = enrichedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
 
-      logger.info('Products enriched', { 
-        productCount: enrichedProducts.length, 
-        totalAmount 
+      logger.info('Products enriched', {
+        productCount: enrichedProducts.length,
+        totalAmount
       });
 
-      // Step 2: Find contact in SendPulse
-      const contact = await this.findContactByPhone(customerInfo.phone);
-      if (!contact) {
-        throw new Error(`Contact with phone ${customerInfo.phone} not found in CRM`);
+      // Step 2: Find contact using messenger external ID
+      let contact = null;
+
+      if (contact_id) {
+        contact = await this.findContactByMessengerExternalId(contact_id);
       }
 
-      logger.info('Contact found', { 
-        contactId: contact.id, 
-        name: `${contact.firstName} ${contact.lastName}` 
+      // Fallback: create new contact if not found
+      if (!contact) {
+        logger.info('Contact not found, creating new contact');
+
+        try {
+          contact = await this.createContact({
+            firstName: processedCustomerInfo.firstName,
+            lastName: processedCustomerInfo.lastName,
+            phone: processedCustomerInfo.phone,
+            email: processedCustomerInfo.email,
+            tags: ['telegram_bot', 'auto_created']
+          });
+
+          logger.info('New contact created', { contactId: contact.id });
+
+        } catch (createError) {
+          logger.error('Failed to create contact', { error: createError.message });
+          throw new Error(`Contact creation failed: ${createError.message}`);
+        }
+      }
+
+      logger.info('Contact ready for deal creation', {
+        contactId: contact.id,
+        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
+        foundViaExternalId: !!contact_id
       });
 
       // Step 3: Create deal in SendPulse
       const deal = await this.createDeal({
-        title: `Bot Order - ${enrichedProducts.map(p => p.name).join(', ')}`,
+        title: `Telegram Order - ${enrichedProducts.map(p => p.name).join(', ')}`,
         price: totalAmount,
         currency: 'CHF',
         contact: contact,
         products: enrichedProducts,
-        delivery: deliveryInfo,
-        source: source
+        delivery: processedDeliveryInfo,
+        source: 'telegram'
       });
 
       logger.info('Deal created', { dealId: deal.id, dealName: deal.name });
 
       // Step 4: Add products to deal
       for (const product of enrichedProducts) {
-        await this.addProductToDeal(deal.id, product);
-        logger.debug('Product added to deal', { 
-          productId: product.sendpulseId, 
-          quantity: product.quantity 
-        });
+        try {
+          await this.addProductToDeal(deal.id, product);
+          logger.debug('Product added to deal', {
+            productId: product.sendpulseId,
+            quantity: product.quantity
+          });
+        } catch (error) {
+          logger.warn('Failed to add product to deal, continuing', {
+            error: error.message,
+            productId: product.id
+          });
+        }
       }
 
       // Step 5: Save bot order mapping
@@ -90,20 +160,21 @@ export class BotController {
         source,
         chatId,
         sendpulseDealId: deal.id,
-        sendpulseContactId: contact.id,
-        customerPhone: customerInfo.phone,
-        customerName: `${customerInfo.firstName || ''} ${customerInfo.lastName || ''}`.trim(),
+        sendpulseContactId: contact.id, // Use real SendPulse ID
+        customerPhone: processedCustomerInfo.phone || `telegram_${telegram_id}`,
+        customerName: `${processedCustomerInfo.firstName} ${processedCustomerInfo.lastName}`.trim(),
         totalAmount: totalAmount,
-        paymentMethod: paymentMethod,
-        deliveryInfo: deliveryInfo,
-        notes: notes,
+        paymentMethod: processedPaymentMethod,
+        deliveryInfo: processedDeliveryInfo,
+        notes: notes || `Telegram order from @${customerInfo?.username || telegram_id}`,
         products: enrichedProducts
       });
 
-      logger.info('Bot order completed successfully', {
+      logger.info('Telegram order completed successfully', {
         botOrderId,
         dealId: deal.id,
-        contactId: contact.id,
+        contactId: contact.id, // Real SendPulse ID
+        externalContactId: contact_id, // Telegram messenger ID
         totalAmount,
         mappingId: botOrderMapping.id
       });
@@ -115,15 +186,18 @@ export class BotController {
         orderNumber: `SP-${deal.id}`,
         status: 'created',
         totalAmount: totalAmount,
-        message: 'Order successfully created in SendPulse CRM'
+        contactId: contact.id,
+        externalContactId: contact_id,
+        message: 'Telegram order successfully created in SendPulse CRM'
       };
 
     } catch (error) {
-      logger.error('Bot order creation failed', {
+      logger.error('Telegram bot order creation failed', {
         error: error.message,
         stack: error.stack,
         botOrderId: orderData.botOrderId,
-        customerPhone: orderData.customerInfo?.phone
+        contact_id: orderData.contact_id,
+        telegram_id: orderData.telegram_id
       });
 
       throw new Error(`Order creation failed: ${error.message}`);
@@ -141,8 +215,8 @@ export class BotController {
 
       // Update status in database
       await this.dbService.updateBotOrderStatus(
-        botOrderId, 
-        updateData.status, 
+        botOrderId,
+        updateData.status,
         updateData.notes
       );
 
@@ -183,9 +257,9 @@ export class BotController {
         const dealDetails = await this.getDealDetails(botOrder.sendpulseDealId);
         crmStatus = dealDetails.status;
       } catch (error) {
-        logger.warn('Failed to get CRM status', { 
-          error: error.message, 
-          dealId: botOrder.sendpulseDealId 
+        logger.warn('Failed to get CRM status', {
+          error: error.message,
+          dealId: botOrder.sendpulseDealId
         });
       }
 
@@ -215,7 +289,7 @@ export class BotController {
   async getAvailableProducts() {
     try {
       const productsWithMappings = await this.dbService.getProductsWithMappings();
-      
+
       const availableProducts = productsWithMappings
         .filter(product => product.isActive && product.isSyncedToSendPulse)
         .map(product => ({
@@ -252,7 +326,7 @@ export class BotController {
     for (const product of products) {
       const ecommerceProduct = await this.dbService.getEcommerceProduct(product.id);
       const mapping = await this.dbService.getProductMapping(product.id);
-      
+
       if (!mapping) {
         throw new Error(`Product ${product.id} is not mapped to SendPulse. Product: ${ecommerceProduct.name}`);
       }
@@ -269,6 +343,49 @@ export class BotController {
     }
 
     return enrichedProducts;
+  }
+
+  /**
+ * Find contact by messenger external ID (telegram contact_id)
+ */
+  async findContactByMessengerExternalId(externalContactId) {
+    try {
+      logger.info('Looking up contact by messenger external ID', { externalContactId });
+
+      const response = await axios.get(`https://api.sendpulse.com/crm/v1/contacts/messenger-external/${externalContactId}`, {
+        headers: {
+          'Authorization': `Bearer ${await this.ensureValidToken()}`
+        }
+      });
+
+      const contact = response.data?.data?.data || response.data?.data;
+
+      if (contact) {
+        logger.info('Contact found via messenger external ID', {
+          externalContactId,
+          sendpulseId: contact.id,
+          name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
+          hasPhone: !!contact.phones?.[0]?.phone,
+          hasEmail: !!contact.emails?.[0]?.email
+        });
+        return contact;
+      }
+
+      return null;
+
+    } catch (error) {
+      if (error.response?.status === 404) {
+        logger.info('Contact not found by messenger external ID', { externalContactId });
+        return null;
+      }
+
+      logger.error('Failed to lookup contact by messenger external ID', {
+        error: error.message,
+        status: error.response?.status,
+        externalContactId
+      });
+      throw error;
+    }
   }
 
   async findContactByPhone(phone) {
