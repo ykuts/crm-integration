@@ -56,9 +56,148 @@ export const validateApiKey = (req, res, next) => {
 };
 
 /**
+ * Validate bot order data - ALL FIELDS OPTIONAL
+ */
+export const validateBotOrderOptional = (req, res, next) => {
+  const schema = Joi.object({
+    // Source information - only source is required
+    source: Joi.string().valid('telegram', 'whatsapp', 'messenger', 'instagram', 'viber').required(),
+    chatId: Joi.string().optional().default('unknown'),
+    botOrderId: Joi.string().optional().default(() => `order_${Date.now()}`),
+
+    // Telegram specific fields
+    contact_id: Joi.string().optional(),
+    telegram_id: Joi.string().optional(),
+
+    // Customer information - ALL OPTIONAL
+    customerInfo: Joi.object({
+      phone: Joi.string().optional().allow('', null),
+      firstName: Joi.string().optional().allow('', null),
+      lastName: Joi.string().optional().allow('', null),
+      username: Joi.string().optional().allow('', null),
+      email: Joi.string().email().optional().allow('', null)
+    }).optional().default({}),
+
+    // Products array - at least something is needed
+    products: Joi.array().items(
+      Joi.object({
+        id: Joi.number().integer().positive().required(),
+        quantity: Joi.number().integer().min(1).max(100).optional().default(1),
+        notes: Joi.string().max(500).optional()
+      })
+    ).min(1).required(), // At least one product is required
+
+    // Delivery information - ALL OPTIONAL
+    deliveryInfo: Joi.object({
+      type: Joi.string().valid('railway_station', 'pickup_point', 'home_delivery', 'office').optional(),
+      city: Joi.string().optional().allow('', null),
+      canton: Joi.string().length(2).optional().allow('', null),
+      station: Joi.string().max(200).optional().allow('', null),
+      address: Joi.string().max(500).optional().allow('', null),
+      postalCode: Joi.string().max(20).optional().allow('', null),
+      notes: Joi.string().max(1000).optional().allow('', null)
+    }).optional().default({}),
+
+    // Payment information - OPTIONAL
+    paymentMethod: Joi.string().valid('CASH', 'CARD', 'BANK_TRANSFER', 'TWINT').optional(),
+
+    // Additional information - OPTIONAL
+    notes: Joi.string().max(2000).optional(),
+    
+    // Optional metadata
+    metadata: Joi.object({
+      userLanguage: Joi.string().valid('en', 'de', 'fr', 'it', 'uk', 'ru').optional(),
+      orderTimestamp: Joi.date().iso().optional(),
+      customerTimezone: Joi.string().optional()
+    }).optional()
+  });
+
+  const { error, value } = schema.validate(req.body, {
+    abortEarly: false,
+    stripUnknown: true,
+    convert: true
+  });
+
+  if (error) {
+    const validationErrors = error.details.map(detail => ({
+      field: detail.path.join('.'),
+      message: detail.message,
+      value: detail.context?.value
+    }));
+
+    logger.warn('Bot order validation failed', {
+      botOrderId: req.body.botOrderId,
+      source: req.body.source,
+      errors: validationErrors
+    });
+
+    return res.status(400).json({
+      success: false,
+      error: 'Validation failed',
+      code: 'VALIDATION_ERROR',
+      details: validationErrors
+    });
+  }
+
+  // Fill required defaults if missing
+  const processedData = { ...value };
+  
+  // Ensure customerInfo exists
+  if (!processedData.customerInfo) {
+    processedData.customerInfo = {};
+  }
+
+  // Fill customer info defaults
+  if (!processedData.customerInfo.firstName) {
+    processedData.customerInfo.firstName = 'TelegramUser';
+  }
+  if (!processedData.customerInfo.lastName) {
+    processedData.customerInfo.lastName = processedData.customerInfo.username || 'Unknown';
+  }
+  if (!processedData.customerInfo.phone) {
+    processedData.customerInfo.phone = processedData.telegram_id ? `telegram_${processedData.telegram_id}` : 'no_phone';
+  }
+
+  // Ensure deliveryInfo exists
+  if (!processedData.deliveryInfo) {
+    processedData.deliveryInfo = {};
+  }
+
+  // Fill delivery info defaults
+  if (!processedData.deliveryInfo.type) {
+    processedData.deliveryInfo.type = 'pickup_point';
+  }
+  if (!processedData.deliveryInfo.city) {
+    processedData.deliveryInfo.city = 'Geneva';
+  }
+  if (!processedData.deliveryInfo.station) {
+    processedData.deliveryInfo.station = 'Geneva Central Station';
+  }
+
+  // Fill payment method default
+  if (!processedData.paymentMethod) {
+    processedData.paymentMethod = 'CASH';
+  }
+
+  // Add processed data to request
+  req.body = processedData;
+
+  logger.info('Bot order validation passed with defaults', {
+    botOrderId: processedData.botOrderId,
+    source: processedData.source,
+    contact_id: processedData.contact_id,
+    telegram_id: processedData.telegram_id,
+    customerPhone: processedData.customerInfo.phone,
+    productsCount: processedData.products.length
+  });
+
+  next();
+};
+
+/**
  * Validate bot order data
  */
-export const validateBotOrder = (req, res, next) => {
+/* export const validateBotOrder = (req, res, next) => {
   const schema = Joi.object({
     // Source information
     source: Joi.string().valid('telegram', 'whatsapp', 'messenger', 'instagram', 'viber').required(),
@@ -146,7 +285,7 @@ export const validateBotOrder = (req, res, next) => {
   });
 
   next();
-};
+}; */
 
 /**
  * Validate bot order status update

@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const API_BASE_URL = process.env.API_BASE_URL || 'https://your-api-url.railway.app';
+const API_BASE_URL = process.env.API_BASE_URL || 'https://crm-integration-production.up.railway.app';
 const API_KEY = process.env.BOT_API_KEY;
 
 async function testWorkingTelegramOrder() {
@@ -59,7 +59,7 @@ async function testWorkingTelegramOrder() {
     // Create the order
     console.log('\n📦 Creating telegram order...');
     
-    const response = await axios.post(`${API_BASE_URL}/api/bot/create-order`, telegramOrderData, {
+    const response = await axios.post(`${API_BASE_URL}/api/bot/test-order`, telegramOrderData, {
       headers: {
         'x-api-key': API_KEY,
         'Content-Type': 'application/json'
@@ -135,7 +135,7 @@ async function testMinimalTelegramOrder() {
     console.log('📱 Minimal data:');
     console.log(JSON.stringify(minimalData, null, 2));
 
-    const response = await axios.post(`${API_BASE_URL}/api/bot/create-order`, minimalData, {
+    const response = await axios.post(`${API_BASE_URL}/api/bot/test-order`, minimalData, {
       headers: {
         'x-api-key': API_KEY,
         'Content-Type': 'application/json'

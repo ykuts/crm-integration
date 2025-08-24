@@ -3,12 +3,64 @@ import express from 'express';
 import { BotController } from '../controllers/botController.js';
 import { validateBotOrder, validateApiKey } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
+import { validateBotOrderOptional } from '../middleware/validation.js';
 
 const router = express.Router();
 const botController = new BotController();
 
 // Middleware to validate API key for all bot routes
 router.use(validateApiKey);
+
+// Test route with completely optional validation
+router.post('/test-order', validateBotOrderOptional, async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    logger.info('TEST: Bot order creation request', {
+      source: req.body.source,
+      chatId: req.body.chatId,
+      botOrderId: req.body.botOrderId,
+      contact_id: req.body.contact_id,
+      telegram_id: req.body.telegram_id,
+      productCount: req.body.products?.length || 0,
+      customerPhone: req.body.customerInfo?.phone
+    });
+
+    const result = await botController.createOrder(req.body);
+    
+    const duration = Date.now() - startTime;
+    logger.info('TEST: Bot order creation completed', {
+      botOrderId: req.body.botOrderId,
+      crmOrderId: result.crmOrderId,
+      duration: `${duration}ms`,
+      success: true
+    });
+
+    res.status(201).json({
+      ...result,
+      testMode: true,
+      message: 'TEST ORDER: ' + result.message
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logger.error('TEST: Bot order creation failed', {
+      error: error.message,
+      stack: error.stack,
+      botOrderId: req.body.botOrderId,
+      contact_id: req.body.contact_id,
+      duration: `${duration}ms`
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Test order creation failed',
+      details: error.message,
+      code: 'TEST_ORDER_CREATION_FAILED',
+      testMode: true
+    });
+  }
+});
 
 // Create order from bot
 router.post('/create-order', validateBotOrder, async (req, res) => {

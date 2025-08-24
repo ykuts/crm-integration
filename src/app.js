@@ -26,7 +26,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Fix for Railway proxy headers
-app.set('trust proxy', true);
+//app.set('trust proxy', true);
 
 // Security middleware
 app.use(helmet());
@@ -47,7 +47,17 @@ const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: process.env.API_RATE_LIMIT || 100,
   message: 'Too many requests from this IP, please try again later.',
-  trustProxy: true // Add this for Railway
+  standardHeaders: true, // Return rate limit info in the headers
+  legacyHeaders: false, // Disable the old headers
+  // Fix for Railway proxy - use skip instead of trustProxy
+  skip: (req) => {
+    // Skip rate limiting for health checks or if needed
+    return req.path === '/health';
+  },
+  keyGenerator: (req) => {
+    // Use x-forwarded-for header if available (Railway proxy), otherwise use req.ip
+    return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || 'unknown';
+  }
 });
 app.use(limiter);
 
