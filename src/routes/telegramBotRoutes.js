@@ -221,5 +221,56 @@ router.get('/telegram-health', async (req, res) => {
   }
 });
 
+/**
+ * Test endpoint to validate product ID conversion
+ */
+router.post('/test-product-conversion', validateApiKey, async (req, res) => {
+  try {
+    const { products } = req.body;
+    
+    if (!products || !Array.isArray(products)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Products array is required'
+      });
+    }
+
+    const processedProducts = products.map(product => {
+      let productId;
+      if (typeof product.id === 'string') {
+        productId = parseInt(product.id, 10);
+      } else if (typeof product.id === 'number') {
+        productId = product.id;
+      } else {
+        throw new Error(`Invalid product ID type: ${typeof product.id}`);
+      }
+
+      if (isNaN(productId) || productId <= 0) {
+        throw new Error(`Invalid product ID: ${product.id}`);
+      }
+
+      return {
+        original: product,
+        processed: {
+          id: productId,
+          quantity: parseInt(product.quantity) || 1
+        }
+      };
+    });
+
+    res.json({
+      success: true,
+      message: 'Product conversion test successful',
+      results: processedProducts
+    });
+
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: error.message,
+      code: 'PRODUCT_CONVERSION_FAILED'
+    });
+  }
+});
 
 export default router;

@@ -8,25 +8,16 @@ import dotenv from 'dotenv';
 
 // Import routes
 import telegramBotRoutes from './routes/telegramBotRoutes.js';
-//import webhookRoutes from './routes/webhookRoutes.js';
-//import syncRoutes from './routes/syncRoutes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
-// Remove this import: import { authMiddleware } from './middleware/auth.js';
 import logger from './utils/logger.js';
-
-// Import services
-//import { SyncManager } from './services/syncManager.js';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
-// Fix for Railway proxy headers
-//app.set('trust proxy', true);
 
 // Security middleware
 app.use(helmet());
@@ -82,10 +73,8 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Routes - REMOVE authMiddleware since botRoutes has its own validateApiKey
-app.use('/api/bot', telegramBotRoutes); // FIXED: Removed authMiddleware
-//app.use('/api/webhook', webhookRoutes); // No auth for webhooks (signature validation instead)
-//app.use('/api/sync', authMiddleware, syncRoutes);
+// Routes
+app.use('/api/bot', telegramBotRoutes); 
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -94,9 +83,13 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/health',
-      bot: '/api/bot',
-      webhooks: '/api/webhook',
-      sync: '/api/sync'
+      bot: '/api/bot'
+    },
+    availableEndpoints: {
+      'POST /api/bot/telegram-order': 'Create telegram order',
+      'GET /api/bot/telegram-health': 'Service health check',
+      'POST /api/bot/test-product-conversion': 'Test product ID conversion',
+      'GET /health': 'Basic health check'
     }
   });
 });
@@ -109,6 +102,11 @@ app.listen(PORT, () => {
   logger.info(`CRM Integration Service started on port ${PORT}`);
   logger.info(`Environment: ${process.env.NODE_ENV}`);
   logger.info(`CRM API URL: ${process.env.CRM_API_URL}`);
+  logger.info(`Available endpoints:`);
+  logger.info(`- POST /api/bot/telegram-order`);
+  logger.info(`- GET /api/bot/telegram-health`);
+  logger.info(`- POST /api/bot/test-product-conversion`);
+  logger.info(`- GET /health`);
 });
 
 export default app;
