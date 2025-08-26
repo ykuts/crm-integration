@@ -280,8 +280,8 @@ router.post('/test-product-conversion', validateApiKey, async (req, res) => {
 router.post('/cart-add', async (req, res) => {
   try {
     const {
+        contact_id,
       telegram_id,
-      contact_id,
       product_id,
       product_name,
       price,
@@ -307,7 +307,7 @@ router.post('/cart-add', async (req, res) => {
     }
 
     // Get contact by telegram_id to update cart variable
-    const contact = await botController.findContactByMessengerExternalId(contact_id);
+    const contact = await botController.findContactByMessengerExternalId(contact_id,);
     
     if (!contact) {
       return res.status(404).json({
