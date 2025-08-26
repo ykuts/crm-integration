@@ -281,6 +281,7 @@ router.post('/cart-add', async (req, res) => {
   try {
     const {
       telegram_id,
+      contact_id,
       product_id,
       product_name,
       price,
@@ -290,6 +291,7 @@ router.post('/cart-add', async (req, res) => {
 
     logger.info('Adding item to cart', {
       telegram_id,
+        contact_id,
       product_id,
       product_name,
       quantity,
@@ -305,7 +307,7 @@ router.post('/cart-add', async (req, res) => {
     }
 
     // Get contact by telegram_id to update cart variable
-    const contact = await botController.findContactByMessengerExternalId(telegram_id);
+    const contact = await botController.findContactByMessengerExternalId(contact_id);
     
     if (!contact) {
       return res.status(404).json({
@@ -388,14 +390,14 @@ router.post('/cart-add', async (req, res) => {
 /**
  * Get cart contents
  */
-router.get('/cart/:telegram_id', async (req, res) => {
+router.get('/cart/:contact_id', async (req, res) => {
   try {
-    const { telegram_id } = req.params;
+    const { contact_id } = req.params;
 
-    logger.info('Getting cart contents', { telegram_id });
+    logger.info('Getting cart contents', { contact_id });
 
-    // Get contact by telegram_id
-    const contact = await botController.findContactByMessengerExternalId(telegram_id);
+    // Get contact by contact_id
+    const contact = await botController.findContactByMessengerExternalId(contact_id);
     
     if (!contact) {
       return res.status(404).json({
