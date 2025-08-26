@@ -3,6 +3,7 @@ import express from 'express';
 import { BotController } from '../controllers/botController.js';
 import { validateApiKey } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
+import axios from 'axios';
 
 const router = express.Router();
 const botController = new BotController();
@@ -272,5 +273,329 @@ router.post('/test-product-conversion', validateApiKey, async (req, res) => {
     });
   }
 });
+
+/**
+ * Add item to cart - updates cart variable via SendPulse API
+ */
+router.post('/cart-add', async (req, res) => {
+  try {
+    const {
+      telegram_id,
+      product_id,
+      product_name,
+      price,
+      quantity,
+      weight_kg
+    } = req.body;
+
+    logger.info('Adding item to cart', {
+      telegram_id,
+      product_id,
+      product_name,
+      quantity,
+      weight_kg
+    });
+
+    // Validate input
+    if (!telegram_id || !product_id || !quantity) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: telegram_id, product_id, quantity'
+      });
+    }
+
+    // Get contact by telegram_id to update cart variable
+    const contact = await botController.findContactByMessengerExternalId(telegram_id);
+    
+    if (!contact) {
+      return res.status(404).json({
+        success: false,
+        error: 'Contact not found'
+      });
+    }
+
+    // Get current cart from contact variables
+    let cartItems = [];
+    if (contact.variables) {
+      const cartVar = contact.variables.find(v => v.name === 'cart');
+      if (cartVar && cartVar.value) {
+        try {
+          cartItems = JSON.parse(cartVar.value);
+        } catch (error) {
+          logger.warn('Failed to parse existing cart', { telegram_id });
+          cartItems = [];
+        }
+      }
+    }
+
+    // Add/update item in cart
+    const existingItemIndex = cartItems.findIndex(item => item.id == product_id);
+    
+    if (existingItemIndex >= 0) {
+      // Update existing item
+      cartItems[existingItemIndex].quantity += parseInt(quantity);
+      cartItems[existingItemIndex].total = cartItems[existingItemIndex].quantity * cartItems[existingItemIndex].price;
+    } else {
+      // Add new item
+      const newItem = {
+        id: parseInt(product_id),
+        name: product_name || `Product ${product_id}`,
+        quantity: parseInt(quantity),
+        price: parseFloat(price) || 0,
+        weight_kg: parseFloat(weight_kg) || 0,
+        total: parseInt(quantity) * (parseFloat(price) || 0)
+      };
+      cartItems.push(newItem);
+    }
+
+    // Update cart variable in SendPulse
+    await axios.post('https://api.sendpulse.com/crm/v1/contacts/variables', {
+      messenger_external_id: telegram_id,
+      variables: {
+        cart: JSON.stringify(cartItems)
+      }
+    }, {
+      headers: {
+        'Authorization': `Bearer ${await botController.ensureValidToken()}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    logger.info('Cart updated successfully', {
+      telegram_id,
+      totalItems: cartItems.length
+    });
+
+    res.json({
+      success: true,
+      message: 'Item added to cart',
+      cart: cartItems
+    });
+
+  } catch (error) {
+    logger.error('Failed to add item to cart', {
+      error: error.message,
+      telegram_id: req.body.telegram_id
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to add item to cart'
+    });
+  }
+});
+
+/**
+ * Get cart contents
+ */
+router.get('/cart/:telegram_id', async (req, res) => {
+  try {
+    const { telegram_id } = req.params;
+
+    logger.info('Getting cart contents', { telegram_id });
+
+    // Get contact by telegram_id
+    const contact = await botController.findContactByMessengerExternalId(telegram_id);
+    
+    if (!contact) {
+      return res.status(404).json({
+        success: false,
+        error: 'Contact not found'
+      });
+    }
+
+    // Get cart from contact variables
+    let cartItems = [];
+    if (contact.variables) {
+      const cartVar = contact.variables.find(v => v.name === 'cart');
+      if (cartVar && cartVar.value) {
+        try {
+          cartItems = JSON.parse(cartVar.value);
+        } catch (error) {
+          logger.warn('Failed to parse cart data', { telegram_id });
+          cartItems = [];
+        }
+      }
+    }
+
+    // Calculate totals
+    const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+    const totalAmount = cartItems.reduce((sum, item) => sum + item.total, 0);
+    const totalWeight = cartItems.reduce((sum, item) => sum + (item.weight_kg || 0), 0);
+
+    // Format cart display
+    let cartDisplay = '';
+    if (cartItems.length === 0) {
+      cartDisplay = 'Корзина пуста';
+    } else {
+      cartDisplay = cartItems.map(item => 
+        `${item.name} x${item.quantity} = ${item.total} CHF`
+      ).join('\n');
+      cartDisplay += `\n\nИтого: ${totalAmount} CHF`;
+      if (totalWeight > 0) {
+        cartDisplay += `\nВес: ${totalWeight} кг`;
+      }
+    }
+
+    res.json({
+      success: true,
+      cart: {
+        items: cartItems,
+        display: cartDisplay,
+        totalItems,
+        totalAmount,
+        totalWeight,
+        isEmpty: cartItems.length === 0
+      }
+    });
+
+  } catch (error) {
+    logger.error('Failed to get cart', {
+      error: error.message,
+      telegram_id: req.params.telegram_id
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get cart'
+    });
+  }
+});
+
+/**
+ * Checkout cart - create order from cart items
+ */
+router.post('/cart-checkout', async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const {
+      source = 'telegram',
+      chatId,
+      contact_id,
+      telegram_id,
+      cart,
+      customerInfo,
+      deliveryInfo,
+      paymentMethod = 'CASH',
+      notes,
+      orderAttributes = {}
+    } = req.body;
+
+    logger.info('Cart checkout request', {
+      chatId,
+      contact_id,
+      telegram_id
+    });
+
+    // Validate required fields
+    if (!contact_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'contact_id is required'
+      });
+    }
+
+    // Get contact and current cart
+    const contact = await botController.findContactByMessengerExternalId(telegram_id || contact_id);
+    
+    if (!contact) {
+      return res.status(404).json({
+        success: false,
+        error: 'Contact not found'
+      });
+    }
+
+    // Get cart from contact variables
+    let cartItems = [];
+    if (contact.variables) {
+      const cartVar = contact.variables.find(v => v.name === 'cart');
+      if (cartVar && cartVar.value) {
+        try {
+          cartItems = JSON.parse(cartVar.value);
+        } catch (error) {
+          logger.warn('Failed to parse cart for checkout', { telegram_id });
+        }
+      }
+    }
+
+    if (!cartItems || cartItems.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Cart is empty'
+      });
+    }
+
+    // Convert cart items to products format for existing createOrder
+    const products = cartItems.map(item => ({
+      id: parseInt(item.id),
+      quantity: parseInt(item.quantity)
+    }));
+
+    // Calculate totals
+    const cartTotal = cartItems.reduce((sum, item) => sum + item.total, 0);
+
+    // Create order data for existing flow
+    const orderData = {
+      source,
+      chatId: chatId || telegram_id || 'unknown',
+      botOrderId: `cart_${Date.now()}`,
+      contact_id,
+      telegram_id: telegram_id || chatId,
+      customerInfo: customerInfo || {},
+      products,
+      deliveryInfo: deliveryInfo || {},
+      paymentMethod,
+      notes: notes || `Cart checkout - ${cartItems.length} items`,
+      orderAttributes: {
+        ...orderAttributes,
+        cart_items: cartItems.length,
+        cart_total: cartTotal,
+        cart_products: cartItems.map(item => `${item.name} x${item.quantity}`).join(', ')
+      }
+    };
+
+    logger.info('Creating order from cart', {
+      productCount: products.length,
+      cartTotal,
+      cartItems: cartItems.map(item => `${item.name} x${item.quantity}`)
+    });
+
+    // Use existing createOrder logic
+    const result = await botController.createOrder(orderData);
+    
+    const duration = Date.now() - startTime;
+    logger.info('Cart checkout completed', {
+      botOrderId: result.botOrderId,
+      crmOrderId: result.crmOrderId,
+      cartTotal,
+      duration: `${duration}ms`
+    });
+
+    res.status(201).json({
+      ...result,
+      cartTotal,
+      itemsOrdered: cartItems.length,
+      message: `Order created successfully with ${cartItems.length} items`
+    });
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logger.error('Cart checkout failed', {
+      error: error.message,
+      stack: error.stack,
+      contact_id: req.body.contact_id,
+      duration: `${duration}ms`
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Cart checkout failed',
+      details: error.message
+    });
+  }
+});
+
+
 
 export default router;
