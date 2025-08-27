@@ -31,11 +31,11 @@ router.use(validateApiKey);
  */
 router.post('/telegram-order', async (req, res) => {
   const startTime = Date.now();
-  
+
   try {
     // Basic validation - only required fields
     const { source, products, contact_id } = req.body;
-    
+
     if (!source || source !== 'telegram') {
       return res.status(400).json({
         success: false,
@@ -43,7 +43,7 @@ router.post('/telegram-order', async (req, res) => {
         code: 'INVALID_SOURCE'
       });
     }
-    
+
     if (!products || !Array.isArray(products) || products.length === 0) {
       return res.status(400).json({
         success: false,
@@ -51,7 +51,7 @@ router.post('/telegram-order', async (req, res) => {
         code: 'MISSING_PRODUCTS'
       });
     }
-    
+
     if (!contact_id) {
       return res.status(400).json({
         success: false,
@@ -141,7 +141,7 @@ router.post('/telegram-order', async (req, res) => {
     });
 
     const result = await botController.createOrder(processedOrder);
-    
+
     const duration = Date.now() - startTime;
     logger.info('Telegram order creation completed', {
       botOrderId: result.botOrderId,
@@ -213,7 +213,7 @@ router.get('/telegram-health', async (req, res) => {
 
   } catch (error) {
     logger.error('Telegram health check failed', { error: error.message });
-    
+
     res.status(503).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
@@ -228,7 +228,7 @@ router.get('/telegram-health', async (req, res) => {
 router.post('/test-product-conversion', validateApiKey, async (req, res) => {
   try {
     const { products } = req.body;
-    
+
     if (!products || !Array.isArray(products)) {
       return res.status(400).json({
         success: false,
@@ -356,15 +356,17 @@ router.get('/cart/:contact_id', async (req, res) => {
     // Format cart display
     let cartDisplay = '';
     if (cart.isEmpty) {
-      cartDisplay = 'Корзина пуста';
+      cartDisplay = 'Кошик порожній';
     } else {
-      cartDisplay = cart.items.map(item => 
-        `${item.productName} x${item.quantity} = ${parseFloat(item.total).toFixed(2)} CHF`
-      ).join('\n');
-      cartDisplay += `\n\nИтого: ${cart.totalAmount.toFixed(2)} CHF`;
-      if (cart.totalWeight > 0) {
-        cartDisplay += `\nВес: ${cart.totalWeight.toFixed(2)} кг`;
-      }
+      cartDisplay = cart.items.map(item => {
+        if (parseInt(item.productId) === 3) {
+          const weightInKg = item.quantity / 2;
+          return `${item.productName} ${weightInKg} кг = ${parseFloat(item.total).toFixed(2)} CHF`;
+        } else {
+          return `${item.productName} x ${item.quantity} = ${parseFloat(item.total).toFixed(2)} CHF`;
+        }
+      }).join('\n');
+      cartDisplay += `\n\nВсього: ${cart.totalAmount.toFixed(2)} CHF`;
     }
 
     res.json({
@@ -393,7 +395,7 @@ router.get('/cart/:contact_id', async (req, res) => {
  */
 router.post('/cart-checkout', async (req, res) => {
   const startTime = Date.now();
-  
+
   try {
     const {
       source = 'telegram',
@@ -465,10 +467,10 @@ router.post('/cart-checkout', async (req, res) => {
 
     // Create order using existing logic
     const result = await botController.createOrder(orderData);
-    
+
     // Clear cart after successful order
     await botController.dbService.clearCart(contact_id);
-    
+
     const duration = Date.now() - startTime;
     logger.info('Cart checkout completed', {
       botOrderId: result.botOrderId,
