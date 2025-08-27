@@ -96,62 +96,6 @@ model CustomerMapping {
   @@index([sendpulseId])
 }
 
-// Sync Jobs Table - tracks synchronization jobs
-model SyncJob {
-  id          Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-  startedAt  DateTime? @map("started_at")
-  completedAt DateTime? @map("completed_at")
-
-  // Job information
-  jobType     String   @map("job_type")
-  status      String   @default("PENDING")
-  
-  // Results
-  itemsProcessed Int @default(0) @map("items_processed")
-  itemsSuccess   Int @default(0) @map("items_success")
-  itemsError     Int @default(0) @map("items_error")
-
-  // Error information
-  errorMessage String? @map("error_message")
-  errorDetails String? @map("error_details")
-
-  // Configuration
-  config       String @default("{}")
-
-  @@map("sync_jobs")
-  @@index([jobType])
-  @@index([status])
-  @@index([createdAt])
-}
-
-// Webhook Events Table - logs incoming webhooks
-model WebhookEvent {
-  id         Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now()) @map("created_at")
-
-  // Webhook information
-  source     String
-  eventType  String   @map("event_type")
-  eventId    String?  @map("event_id")
-  
-  // Request details
-  headers   String
-  payload   String
-  
-  // Processing status
-  processed    Boolean @default(false)
-  processedAt  DateTime? @map("processed_at")
-  errorMessage String? @map("error_message")
-
-  @@map("webhook_events")
-  @@index([source])
-  @@index([eventType])
-  @@index([processed])
-  @@index([createdAt])
-}
-
 // API Logs Table - logs important API calls for debugging
 model ApiLog {
   id         Int      @id @default(autoincrement())
@@ -180,4 +124,28 @@ model ApiLog {
   @@index([statusCode])
   @@index([userType])
   @@index([createdAt])
+}
+
+// Bot Cart Items Table - stores temporary cart items before order creation
+model BotCartItem {
+  id         Int      @id @default(autoincrement())
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // User identification
+  telegramId String @map("telegram_id")
+  contactId  String @map("contact_id")
+
+  // Product information
+  productId   Int     @map("product_id")
+  productName String  @map("product_name")
+  quantity    Int
+  price       Decimal @db.Decimal(10, 2)
+  weightKg    Decimal @default(0) @map("weight_kg") @db.Decimal(10, 3)
+  total       Decimal @db.Decimal(10, 2)
+
+  @@map("bot_cart_items")
+  @@index([telegramId])
+  @@index([contactId])
+  @@index([productId])
 }
