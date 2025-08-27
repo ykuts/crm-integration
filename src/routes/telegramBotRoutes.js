@@ -275,13 +275,13 @@ router.post('/test-product-conversion', validateApiKey, async (req, res) => {
 });
 
 /**
- * Add item to cart - updates cart variable via SendPulse API
+ * Add item to cart - saves to database
  */
 router.post('/cart-add', async (req, res) => {
   try {
     const {
-        contact_id,
       telegram_id,
+      contact_id,
       product_id,
       product_name,
       price,
@@ -290,8 +290,7 @@ router.post('/cart-add', async (req, res) => {
     } = req.body;
 
     logger.info('Adding item to cart', {
-      telegram_id,
-        contact_id,
+      contact_id,
       product_id,
       product_name,
       quantity,
@@ -299,85 +298,41 @@ router.post('/cart-add', async (req, res) => {
     });
 
     // Validate input
-    if (!telegram_id || !product_id || !quantity) {
+    if (!contact_id || !product_id || !quantity) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: telegram_id, product_id, quantity'
+        error: 'Missing required fields: contact_id, product_id, quantity'
       });
     }
 
-    // Get contact by telegram_id to update cart variable
-    const contact = await botController.findContactByMessengerExternalId(contact_id,);
-    
-    if (!contact) {
-      return res.status(404).json({
-        success: false,
-        error: 'Contact not found'
-      });
-    }
-
-    // Get current cart from contact variables
-    let cartItems = [];
-    if (contact.variables) {
-      const cartVar = contact.variables.find(v => v.name === 'cart');
-      if (cartVar && cartVar.value) {
-        try {
-          cartItems = JSON.parse(cartVar.value);
-        } catch (error) {
-          logger.warn('Failed to parse existing cart', { telegram_id });
-          cartItems = [];
-        }
-      }
-    }
-
-    // Add/update item in cart
-    const existingItemIndex = cartItems.findIndex(item => item.id == product_id);
-    
-    if (existingItemIndex >= 0) {
-      // Update existing item
-      cartItems[existingItemIndex].quantity += parseInt(quantity);
-      cartItems[existingItemIndex].total = cartItems[existingItemIndex].quantity * cartItems[existingItemIndex].price;
-    } else {
-      // Add new item
-      const newItem = {
-        id: parseInt(product_id),
-        name: product_name || `Product ${product_id}`,
-        quantity: parseInt(quantity),
-        price: parseFloat(price) || 0,
-        weight_kg: parseFloat(weight_kg) || 0,
-        total: parseInt(quantity) * (parseFloat(price) || 0)
-      };
-      cartItems.push(newItem);
-    }
-
-    // Update cart variable in SendPulse
-    await axios.post('https://api.sendpulse.com/crm/v1/contacts/variables', {
-      messenger_external_id: telegram_id,
-      variables: {
-        cart: JSON.stringify(cartItems)
-      }
-    }, {
-      headers: {
-        'Authorization': `Bearer ${await botController.ensureValidToken()}`,
-        'Content-Type': 'application/json'
-      }
+    // Add to cart using database
+    const cartItem = await botController.dbService.addToCart(contact_id, telegram_id, {
+      productId: product_id,
+      productName: product_name,
+      quantity: quantity,
+      price: price,
+      weightKg: weight_kg
     });
 
+    // Get updated cart
+    const cart = await botController.dbService.getCart(contact_id);
+
     logger.info('Cart updated successfully', {
-      telegram_id,
-      totalItems: cartItems.length
+      contact_id,
+      totalItems: cart.totalItems,
+      totalAmount: cart.totalAmount
     });
 
     res.json({
       success: true,
       message: 'Item added to cart',
-      cart: cartItems
+      cart: cart
     });
 
   } catch (error) {
     logger.error('Failed to add item to cart', {
       error: error.message,
-      telegram_id: req.body.telegram_id
+      contact_id: req.body.contact_id
     });
 
     res.status(500).json({
@@ -388,7 +343,7 @@ router.post('/cart-add', async (req, res) => {
 });
 
 /**
- * Get cart contents
+ * Get cart contents from database
  */
 router.get('/cart/:contact_id', async (req, res) => {
   try {
@@ -396,65 +351,34 @@ router.get('/cart/:contact_id', async (req, res) => {
 
     logger.info('Getting cart contents', { contact_id });
 
-    // Get contact by contact_id
-    const contact = await botController.findContactByMessengerExternalId(contact_id);
-    
-    if (!contact) {
-      return res.status(404).json({
-        success: false,
-        error: 'Contact not found'
-      });
-    }
-
-    // Get cart from contact variables
-    let cartItems = [];
-    if (contact.variables) {
-      const cartVar = contact.variables.find(v => v.name === 'cart');
-      if (cartVar && cartVar.value) {
-        try {
-          cartItems = JSON.parse(cartVar.value);
-        } catch (error) {
-          logger.warn('Failed to parse cart data', { telegram_id });
-          cartItems = [];
-        }
-      }
-    }
-
-    // Calculate totals
-    const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-    const totalAmount = cartItems.reduce((sum, item) => sum + item.total, 0);
-    const totalWeight = cartItems.reduce((sum, item) => sum + (item.weight_kg || 0), 0);
+    const cart = await botController.dbService.getCart(contact_id);
 
     // Format cart display
     let cartDisplay = '';
-    if (cartItems.length === 0) {
+    if (cart.isEmpty) {
       cartDisplay = 'Корзина пуста';
     } else {
-      cartDisplay = cartItems.map(item => 
-        `${item.name} x${item.quantity} = ${item.total} CHF`
+      cartDisplay = cart.items.map(item => 
+        `${item.productName} x${item.quantity} = ${parseFloat(item.total).toFixed(2)} CHF`
       ).join('\n');
-      cartDisplay += `\n\nИтого: ${totalAmount} CHF`;
-      if (totalWeight > 0) {
-        cartDisplay += `\nВес: ${totalWeight} кг`;
+      cartDisplay += `\n\nИтого: ${cart.totalAmount.toFixed(2)} CHF`;
+      if (cart.totalWeight > 0) {
+        cartDisplay += `\nВес: ${cart.totalWeight.toFixed(2)} кг`;
       }
     }
 
     res.json({
       success: true,
       cart: {
-        items: cartItems,
-        display: cartDisplay,
-        totalItems,
-        totalAmount,
-        totalWeight,
-        isEmpty: cartItems.length === 0
+        ...cart,
+        display: cartDisplay
       }
     });
 
   } catch (error) {
     logger.error('Failed to get cart', {
       error: error.message,
-      telegram_id: req.params.telegram_id
+      contact_id: req.params.contact_id
     });
 
     res.status(500).json({
@@ -465,7 +389,7 @@ router.get('/cart/:contact_id', async (req, res) => {
 });
 
 /**
- * Checkout cart - create order from cart items
+ * Checkout cart - create order from cart items in database
  */
 router.post('/cart-checkout', async (req, res) => {
   const startTime = Date.now();
@@ -476,7 +400,6 @@ router.post('/cart-checkout', async (req, res) => {
       chatId,
       contact_id,
       telegram_id,
-      cart,
       customerInfo,
       deliveryInfo,
       paymentMethod = 'CASH',
@@ -485,7 +408,6 @@ router.post('/cart-checkout', async (req, res) => {
     } = req.body;
 
     logger.info('Cart checkout request', {
-      chatId,
       contact_id,
       telegram_id
     });
@@ -498,30 +420,10 @@ router.post('/cart-checkout', async (req, res) => {
       });
     }
 
-    // Get contact and current cart
-    const contact = await botController.findContactByMessengerExternalId(telegram_id || contact_id);
-    
-    if (!contact) {
-      return res.status(404).json({
-        success: false,
-        error: 'Contact not found'
-      });
-    }
+    // Get cart from database
+    const cart = await botController.dbService.getCart(contact_id);
 
-    // Get cart from contact variables
-    let cartItems = [];
-    if (contact.variables) {
-      const cartVar = contact.variables.find(v => v.name === 'cart');
-      if (cartVar && cartVar.value) {
-        try {
-          cartItems = JSON.parse(cartVar.value);
-        } catch (error) {
-          logger.warn('Failed to parse cart for checkout', { telegram_id });
-        }
-      }
-    }
-
-    if (!cartItems || cartItems.length === 0) {
+    if (cart.isEmpty) {
       return res.status(400).json({
         success: false,
         error: 'Cart is empty'
@@ -529,15 +431,12 @@ router.post('/cart-checkout', async (req, res) => {
     }
 
     // Convert cart items to products format for existing createOrder
-    const products = cartItems.map(item => ({
-      id: parseInt(item.id),
+    const products = cart.items.map(item => ({
+      id: parseInt(item.productId),
       quantity: parseInt(item.quantity)
     }));
 
-    // Calculate totals
-    const cartTotal = cartItems.reduce((sum, item) => sum + item.total, 0);
-
-    // Create order data for existing flow
+    // Create order data
     const orderData = {
       source,
       chatId: chatId || telegram_id || 'unknown',
@@ -548,37 +447,41 @@ router.post('/cart-checkout', async (req, res) => {
       products,
       deliveryInfo: deliveryInfo || {},
       paymentMethod,
-      notes: notes || `Cart checkout - ${cartItems.length} items`,
+      notes: notes || `Cart checkout - ${cart.totalItems} items`,
       orderAttributes: {
         ...orderAttributes,
-        cart_items: cartItems.length,
-        cart_total: cartTotal,
-        cart_products: cartItems.map(item => `${item.name} x${item.quantity}`).join(', ')
+        cart_items: cart.totalItems,
+        cart_total: cart.totalAmount,
+        cart_weight: cart.totalWeight,
+        cart_products: cart.items.map(item => `${item.productName} x${item.quantity}`).join(', ')
       }
     };
 
     logger.info('Creating order from cart', {
       productCount: products.length,
-      cartTotal,
-      cartItems: cartItems.map(item => `${item.name} x${item.quantity}`)
+      cartTotal: cart.totalAmount,
+      cartItems: cart.items.map(item => `${item.productName} x${item.quantity}`)
     });
 
-    // Use existing createOrder logic
+    // Create order using existing logic
     const result = await botController.createOrder(orderData);
+    
+    // Clear cart after successful order
+    await botController.dbService.clearCart(contact_id);
     
     const duration = Date.now() - startTime;
     logger.info('Cart checkout completed', {
       botOrderId: result.botOrderId,
       crmOrderId: result.crmOrderId,
-      cartTotal,
+      cartTotal: cart.totalAmount,
       duration: `${duration}ms`
     });
 
     res.status(201).json({
       ...result,
-      cartTotal,
-      itemsOrdered: cartItems.length,
-      message: `Order created successfully with ${cartItems.length} items`
+      cartTotal: cart.totalAmount,
+      itemsOrdered: cart.totalItems,
+      message: `Order created successfully with ${cart.totalItems} items`
     });
 
   } catch (error) {
