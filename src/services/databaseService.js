@@ -519,5 +519,46 @@ export class DatabaseService {
     }
   }
 
+  async updateCartItem(itemId, newQuantity) {
+  try {
+    // Get the item first to calculate new total
+    const item = await this.crmDb.botCartItem.findUnique({
+      where: { id: parseInt(itemId) }
+    });
+
+    if (!item) {
+      throw new Error('Cart item not found');
+    }
+
+    // Calculate new total
+    const newTotal = parseInt(newQuantity) * parseFloat(item.price);
+
+    // Update the item
+    const updatedItem = await this.crmDb.botCartItem.update({
+      where: { id: parseInt(itemId) },
+      data: {
+        quantity: parseInt(newQuantity),
+        total: newTotal
+      }
+    });
+
+    logger.info('Cart item updated', { 
+      itemId, 
+      oldQuantity: item.quantity, 
+      newQuantity: parseInt(newQuantity),
+      newTotal 
+    });
+
+    return updatedItem;
+  } catch (error) {
+    logger.error('Failed to update cart item', {
+      error: error.message,
+      itemId,
+      newQuantity
+    });
+    throw error;
+  }
+}
+
 }
 

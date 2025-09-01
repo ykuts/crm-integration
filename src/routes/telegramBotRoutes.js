@@ -503,6 +503,83 @@ router.post('/cart-checkout', async (req, res) => {
   }
 });
 
+/**
+ * Update cart item quantity
+ */
+router.put('/cart-item/:itemId', async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const { quantity } = req.body;
 
+    logger.info('Updating cart item quantity', { itemId, quantity });
+
+    // Validate input
+    if (!quantity || parseInt(quantity) <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Quantity must be greater than 0'
+      });
+    }
+
+    // Update item in database
+    const updatedItem = await botController.dbService.updateCartItem(itemId, quantity);
+
+    res.json({
+      success: true,
+      message: 'Cart item updated successfully',
+      item: {
+        id: updatedItem.id,
+        productName: updatedItem.productName,
+        quantity: updatedItem.quantity,
+        price: parseFloat(updatedItem.price),
+        total: parseFloat(updatedItem.total)
+      }
+    });
+
+  } catch (error) {
+    logger.error('Failed to update cart item', {
+      error: error.message,
+      itemId: req.params.itemId
+    });
+
+    const statusCode = error.message === 'Cart item not found' ? 404 : 500;
+    
+    res.status(statusCode).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Clear entire cart
+ */
+router.delete('/cart/:contact_id', async (req, res) => {
+  try {
+    const { contact_id } = req.params;
+
+    logger.info('Clearing cart', { contact_id });
+
+    // Clear cart using existing database method
+    const result = await botController.dbService.clearCart(contact_id);
+
+    res.json({
+      success: true,
+      message: 'Cart cleared successfully',
+      deletedItems: result.count
+    });
+
+  } catch (error) {
+    logger.error('Failed to clear cart', {
+      error: error.message,
+      contact_id: req.params.contact_id
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear cart'
+    });
+  }
+});
 
 export default router;
