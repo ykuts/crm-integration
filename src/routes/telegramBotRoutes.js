@@ -359,7 +359,7 @@ router.get('/cart/:contact_id', async (req, res) => {
       cartDisplay = 'Кошик порожній';
     } else {
       cartDisplay = cart.items.map(item => {
-        if (parseInt(item.productId) === 3) {
+        if (parseInt(item.productId) === 3 || parseInt(item.productId) === 6 || parseInt(item.productId) === 25) {
           const weightInKg = item.quantity / 2;
           return `${item.productName} ${weightInKg} кг = ${parseFloat(item.total).toFixed(2)} CHF`;
         } else {
