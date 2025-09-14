@@ -8,6 +8,24 @@ import axios from 'axios';
 const router = express.Router();
 const botController = new BotController();
 
+// Health check БЕЗ аутентификации (ПЕРЕД validateApiKey)
+router.get('/telegram-health', async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      status: 'HEALTHY',
+      timestamp: new Date().toISOString(),
+      service: 'Telegram Bot Service'
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      status: 'UNHEALTHY',
+      error: error.message 
+    });
+  }
+});
+
 // DEBUG: Add logging middleware to see what's hitting the routes
 router.use((req, res, next) => {
   logger.info('TELEGRAM ROUTE HIT', {
@@ -59,6 +77,8 @@ router.post('/telegram-order', async (req, res) => {
         code: 'MISSING_CONTACT_ID'
       });
     }
+
+    
 
     // FIXED: Convert product IDs to integers and validate
     const processedProducts = products.map(product => {
@@ -189,6 +209,15 @@ router.post('/telegram-order', async (req, res) => {
   }
 });
 
+router.post('/telegram-order-enhanced', async (req, res) => {
+  try {
+    const result = await botController.createOrderEnhanced(req.body);
+    res.status(201).json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 /**
  * Health check for telegram bot
  */
@@ -273,6 +302,8 @@ router.post('/test-product-conversion', validateApiKey, async (req, res) => {
     });
   }
 });
+
+
 
 /**
  * Add item to cart - saves to database
@@ -581,5 +612,33 @@ router.delete('/cart/:contact_id', async (req, res) => {
     });
   }
 });
+
+router.get('/order-status/:botOrderId', async (req, res) => {
+  try {
+    const result = await botController.getOrderStatus(req.params.botOrderId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Health check БЕЗ аутентификации
+/* router.get('/telegram-health', async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      status: 'HEALTHY',
+      timestamp: new Date().toISOString(),
+      service: 'Telegram Bot Service'
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      status: 'UNHEALTHY',
+      error: error.message 
+    });
+  }
+}); */
+
 
 export default router;

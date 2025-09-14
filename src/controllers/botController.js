@@ -200,6 +200,94 @@ export class BotController {
         totalAmount: parseFloat(orderAttributes?.sum) || totalAmount
       });
 
+      try {
+  // Step 5: Create order in ecommerce database
+  logger.info('Creating order in ecommerce database', {
+    dealId: deal.id,
+    contactId: contact.id
+  });
+
+  const ecommerceOrderData = {
+    orderSource: 'TELEGRAM_BOT',
+    externalOrderId: botOrderId,
+    syncStatus: 'PENDING',
+    
+    guestInfo: {
+      firstName: orderAttributes?.fullname?.split(' ')[0] || contact.firstName || 'Telegram',
+      lastName: orderAttributes?.fullname?.split(' ').slice(1).join(' ') || contact.lastName || 'User',
+      phone: customerInfo?.phone || '',
+      email: customerInfo?.email || ''
+    },
+    
+    deliveryType: 'RAILWAY_STATION',
+    deliveryStationId: this.mapStationNameToId(deliveryInfo?.station),
+    deliveryDate: this.getNextDeliveryDate(),
+    deliveryTimeSlot: 'morning',
+    
+    totalAmount: totalAmount,
+    paymentMethod: 'CASH',
+    paymentStatus: 'PENDING',
+    status: 'PENDING',
+    
+    notesClient: notes || '',
+    notesAdmin: `Created from Telegram bot. Deal ID: ${deal.id}`,
+    
+    items: enrichedProducts.map(product => ({
+      productId: product.id,
+      quantity: product.quantity,
+      unitPrice: product.unitPrice
+    }))
+  };
+
+  const ecommerceResponse = await axios.post(
+    `${this.ecommerceApiUrl}/api/orders/enhanced`,
+    ecommerceOrderData,
+    {
+      headers: {
+        'X-Internal-API-Token': this.ecommerceApiToken,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    }
+  );
+
+  const ecommerceOrder = ecommerceResponse.data.order;
+  
+  logger.info('Order created in ecommerce database', {
+    ecommerceOrderId: ecommerceOrder.id,
+    dealId: deal.id
+  });
+
+  // Update ecommerce order with SendPulse IDs
+  await axios.patch(
+    `${this.ecommerceApiUrl}/api/orders/${ecommerceOrder.id}/sync-data`,
+    {
+      sendpulseDealId: deal.id.toString(),
+      sendpulseContactId: contact.id.toString(),
+      syncStatus: 'SYNCED',
+      lastSyncAt: new Date().toISOString()
+    },
+    {
+      headers: {
+        'X-Internal-API-Token': this.ecommerceApiToken,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+
+  logger.info('Order synced between both systems', {
+    ecommerceOrderId: ecommerceOrder.id,
+    dealId: deal.id
+  });
+
+} catch (ecommerceError) {
+  logger.warn('Failed to create order in ecommerce DB, but SendPulse order successful', {
+    error: ecommerceError.message,
+    dealId: deal.id
+  });
+  // Не бросаем ошибку - главное что заказ в SendPulse создан
+}
+
       return {
         success: true,
         botOrderId,
@@ -224,6 +312,9 @@ export class BotController {
 
       throw new Error(`Order creation failed: ${error.message}`);
     }
+
+
+    
   }
 
   async updateOrder(botOrderId, updateData) {
@@ -341,6 +432,22 @@ export class BotController {
   }
 
   // Helper methods
+
+  mapStationNameToId(stationName) {
+  const stationMapping = {
+    'Zurich HB': 1, 'Zürich HB': 1,
+    'Geneva': 2, 'Genève': 2,
+    'Basel': 3, 'Bern': 4, 'Lausanne': 5
+  };
+  return stationMapping[stationName] || 1;
+}
+
+getNextDeliveryDate() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(10, 0, 0, 0);
+  return tomorrow.toISOString();
+}
 
   async enrichProductsWithPricing(products) {
     const enrichedProducts = [];
