@@ -1,9 +1,9 @@
-import { SendPulseCrmService } from './sendPulseCrmService.js';
+import { SendPulseCRMService } from './sendPulseCrmService.js';
 import { DatabaseService } from './databaseService.js';
 import axios from 'axios';
 import logger from '../utils/logger.js';
 
-export class EnhancedCrmService extends SendPulseCrmService {
+export class EnhancedCrmService extends SendPulseCRMService {
   constructor() {
     super();
     this.dbService = new DatabaseService();
