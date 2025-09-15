@@ -300,27 +300,64 @@ parseCartProductsString(cartProductsString, cartTotal) {
 }
 
   /**
-   * Map telegram product name to ecommerce product ID
-   */
-  mapTelegramProductToEcommerceId(productName) {
-    // Simple mapping - you can make this more sophisticated
-    const productMapping = {
-      'Сир Кисломолочний': 1,
-      'Творог': 1,
-      'Cottage Cheese': 1,
-      'Tvorog': 1,
-      // Add more mappings as needed
-    };
-
-    // Find partial match
-    for (const [key, id] of Object.entries(productMapping)) {
-      if (productName && productName.toLowerCase().includes(key.toLowerCase())) {
-        return id;
-      }
+ * Database-driven product mapping (using existing DatabaseService)
+ */
+async mapTelegramProductToEcommerceId(productName) {
+  try {
+    // Use existing method from DatabaseService
+    const productMappings = await this.dbService.getAllProductMappings();
+    
+    // First try exact name match
+    let mapping = productMappings.find(p => 
+      p.name && p.name.toLowerCase() === productName.toLowerCase()
+    );
+    
+    // If no exact match, try partial match
+    if (!mapping && productName) {
+      mapping = productMappings.find(p => 
+        p.name && (
+          p.name.toLowerCase().includes(productName.toLowerCase()) ||
+          productName.toLowerCase().includes(p.name.toLowerCase())
+        )
+      );
     }
-
-    return 1; // Default product ID
+    
+    if (mapping) {
+      logger.info('Product mapped from database', {
+        inputName: productName,
+        foundName: mapping.name,
+        ecommerceId: mapping.ecommerceId, // Note: camelCase in code
+        sendpulseId: mapping.sendpulseId
+      });
+      return mapping.ecommerceId;
+    }
+    
+    // Fallback to СИР КИСЛОМОЛОЧНИЙ (ecommerce_id: 3)
+    const fallbackMapping = productMappings.find(p => 
+      p.name && p.name.includes('КИСЛОМОЛОЧНИЙ')
+    );
+    
+    if (fallbackMapping) {
+      logger.warn('Using fallback product mapping', {
+        inputName: productName,
+        fallbackName: fallbackMapping.name,
+        ecommerceId: fallbackMapping.ecommerceId
+      });
+      return fallbackMapping.ecommerceId;
+    }
+    
+    // Final fallback to default product (СИР КИСЛОМОЛОЧНИЙ has ecommerce_id: 3)
+    logger.error('No product mapping found, using default (ecommerce_id: 3)', { productName });
+    return 3;
+    
+  } catch (error) {
+    logger.error('Failed to map product from database', {
+      error: error.message,
+      productName
+    });
+    return 3; // Fallback
   }
+}
 
   /**
    * Parse order text to extract items
@@ -945,29 +982,62 @@ async getDealDetails(dealId) {
  */
 mapStationNameToId(stationName) {
   const stationMapping = {
-    'Zurich HB': 1, 
-    'Zürich HB': 1,
-    'Geneva': 2, 
-    'Genève': 2,
-    'Basel': 3, 
-    'Bern': 4, 
-    'Lausanne': 5,
-    'Nyon': 6,
-    'Vevey': 7,
-    'Montreux': 8,
-    'Sion': 9,
-    'Fribourg': 10
+    // Based on your actual database stations
+    'Montreux': 3,
+    'Lausanne': 4, 
+    'Morges': 6,
+    'Geneva': 7,
+    'Genève': 7,      // Alternative spelling
+    'Aigle': 10,
+    'Vevey': 11,
+    'Rolle': 12,
+    
+    // Common variations and fallbacks
+    'Montreux 12:10': 3,
+    'Lausanne 13:00': 4,
+    'Morges 13:35': 6,
+    'Geneva 18:20-18:30': 7,
+    'Genève 18:20-18:30': 7,
+    'Aigle по телефону': 10,
+    'Vevey 11:40': 11,
+    'Rolle 10:15-10:30': 12
   };
   
   if (!stationName) {
-    logger.warn('No station name provided, using default');
-    return 1;
+    logger.warn('No station name provided, using default (Vevey)');
+    return 11; // Default to Vevey
   }
   
-  const stationId = stationMapping[stationName] || 1;
-  logger.debug('Station mapped', { stationName, stationId });
+  // First try exact match
+  let stationId = stationMapping[stationName];
   
-  return stationId;
+  // If no exact match, try case-insensitive partial match
+  if (!stationId) {
+    const lowerStationName = stationName.toLowerCase();
+    for (const [key, id] of Object.entries(stationMapping)) {
+      if (key.toLowerCase().includes(lowerStationName) || 
+          lowerStationName.includes(key.toLowerCase())) {
+        stationId = id;
+        logger.info('Station mapped by partial match', { 
+          input: stationName, 
+          matched: key, 
+          stationId 
+        });
+        break;
+      }
+    }
+  }
+  
+  // Final fallback
+  const finalStationId = stationId || 11; // Default to Vevey (most central)
+  
+  logger.info('Station mapping result', { 
+    input: stationName, 
+    output: finalStationId,
+    mappingUsed: stationId ? 'direct' : 'default'
+  });
+  
+  return finalStationId;
 }
 
 /**
