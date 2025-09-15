@@ -78,75 +78,107 @@ export class EnhancedCrmService extends SendPulseCRMService {
    * Create order in ecommerce database via API
    */
   async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
-    try {
-      logger.info('Creating order in ecommerce database', { botOrderId });
+  try {
+    logger.info('Creating order in ecommerce database', { botOrderId });
 
-      // Map telegram bot data to ecommerce order format
-      const orderPayload = {
-        // Order source and identification
-        orderSource: 'TELEGRAM_BOT',
-        externalOrderId: botOrderId,
-        syncStatus: 'PENDING',
-        
-        // Customer information (as guest)
-        guestInfo: {
-          firstName: telegramOrderData.fullname?.split(' ')[0] || telegramOrderData.customer?.firstName || 'Telegram',
-          lastName: telegramOrderData.fullname?.split(' ').slice(1).join(' ') || telegramOrderData.customer?.lastName || 'User',
-          phone: telegramOrderData.phone || telegramOrderData.customer?.phone || '',
-          email: telegramOrderData.email || telegramOrderData.customer?.email || ''
+    // Map telegram bot data to ecommerce order format
+    const items = this.mapTelegramItemsToEcommerceFormat(telegramOrderData);
+    
+    // ✅ FIX: Calculate total amount from cart data or fallback to items
+    const totalAmount = telegramOrderData.orderAttributes?.cart_total || 
+                       telegramOrderData.sum || 
+                       telegramOrderData.totalAmount ||
+                       items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+
+    const orderPayload = {
+      // Order source and identification
+      orderSource: 'TELEGRAM_BOT',
+      externalOrderId: botOrderId,
+      syncStatus: 'PENDING',
+      
+      // Customer information (as guest)
+      guestInfo: {
+        firstName: telegramOrderData.orderAttributes?.fullname?.split(' ')[0] || 
+                  telegramOrderData.fullname?.split(' ')[0] || 
+                  telegramOrderData.customerInfo?.firstName || 
+                  'Telegram',
+        lastName: telegramOrderData.orderAttributes?.fullname?.split(' ').slice(1).join(' ') || 
+                 telegramOrderData.fullname?.split(' ').slice(1).join(' ') || 
+                 telegramOrderData.customerInfo?.lastName || 
+                 'User',
+        phone: telegramOrderData.customerInfo?.phone || 
+               telegramOrderData.phone || '',
+        email: telegramOrderData.customerInfo?.email || 
+               telegramOrderData.email || ''
+      },
+      
+      // Delivery information
+      deliveryType: 'RAILWAY_STATION',
+      deliveryStationId: this.mapStationNameToId(
+        telegramOrderData.deliveryInfo?.station || 
+        telegramOrderData.station
+      ),
+      deliveryDate: telegramOrderData.deliveryDate || this.getNextDeliveryDate(),
+      deliveryTimeSlot: telegramOrderData.deliveryTimeSlot || 'morning',
+      deliveryAddress: {
+        city: telegramOrderData.deliveryInfo?.city || 
+              telegramOrderData.city || 'Unknown',
+        station: telegramOrderData.deliveryInfo?.station || 
+                telegramOrderData.station || 'Unknown',
+        canton: telegramOrderData.deliveryInfo?.canton || 
+               telegramOrderData.canton || 'Unknown'
+      },
+      
+      // ✅ FIX: Use calculated total amount
+      totalAmount: parseFloat(totalAmount),
+      paymentMethod: 'CASH',
+      paymentStatus: 'PENDING',
+      status: 'PENDING',
+      
+      // Notes with more info
+      notesClient: telegramOrderData.question || 
+                  telegramOrderData.notes || 
+                  telegramOrderData.orderAttributes?.cart_products || '',
+      notesAdmin: `Created from Telegram bot. Chat ID: ${telegramOrderData.contact_id || telegramOrderData.chatId}. Cart: ${telegramOrderData.orderAttributes?.cart_products || ''}`,
+      
+      // Order items
+      items: items
+    };
+
+    logger.info('Order payload for ecommerce DB', {
+      totalAmount: orderPayload.totalAmount,
+      itemsCount: items.length,
+      customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`,
+      deliveryStation: orderPayload.deliveryAddress.station
+    });
+
+    // Test connection first
+    await this.testEcommerceConnection();
+
+    // Create order using enhanced endpoint
+    const response = await axios.post(
+      `${this.ecommerceApiUrl}/api/orders/enhanced`,
+      orderPayload,
+      {
+        headers: {
+          'X-Internal-API-Token': this.ecommerceApiToken,
+          'Content-Type': 'application/json'
         },
-        
-        // Delivery information
-        deliveryType: 'RAILWAY_STATION',
-        deliveryStationId: this.mapStationNameToId(telegramOrderData.station || telegramOrderData.delivery?.station),
-        deliveryDate: telegramOrderData.deliveryDate || this.getNextDeliveryDate(),
-        deliveryTimeSlot: telegramOrderData.deliveryTimeSlot || 'morning',
-        deliveryAddress: {
-          city: telegramOrderData.city || telegramOrderData.delivery?.city || 'Unknown',
-          station: telegramOrderData.station || telegramOrderData.delivery?.station || 'Unknown',
-          canton: telegramOrderData.canton || telegramOrderData.delivery?.canton || 'Unknown'
-        },
-        
-        // Order details
-        totalAmount: parseFloat(telegramOrderData.sum || telegramOrderData.totalAmount || 0),
-        paymentMethod: 'CASH',
-        paymentStatus: 'PENDING',
-        status: 'PENDING',
-        
-        // Notes
-        notesClient: telegramOrderData.question || telegramOrderData.notes || '',
-        notesAdmin: `Created from Telegram bot. Chat ID: ${telegramOrderData.contact_id || telegramOrderData.chatId}`,
-        
-        // Order items - convert from telegram format
-        items: this.mapTelegramItemsToEcommerceFormat(telegramOrderData)
-      };
+        timeout: 15000
+      }
+    );
 
-      // Test connection first
-      await this.testEcommerceConnection();
+    const order = response.data.order;
+    logger.info('Order created in ecommerce database', {
+      orderId: order.id,
+      botOrderId,
+      totalAmount: order.totalAmount,
+      customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`
+    });
 
-      // Create order using enhanced endpoint
-      const response = await axios.post(
-        `${this.ecommerceApiUrl}/api/orders/enhanced`,
-        orderPayload,
-        {
-          headers: {
-            'X-Internal-API-Token': this.ecommerceApiToken,
-            'Content-Type': 'application/json'
-          },
-          timeout: 15000
-        }
-      );
+    return order;
 
-      const order = response.data.order;
-      logger.info('Order created in ecommerce database', {
-        orderId: order.id,
-        botOrderId,
-        totalAmount: order.totalAmount
-      });
-
-      return order;
-
-    } catch (error) {
+  } catch (error) {
       if (error.response) {
         logger.error('Ecommerce API error', {
           status: error.response.status,
@@ -174,42 +206,98 @@ export class EnhancedCrmService extends SendPulseCRMService {
    * Map telegram order items to ecommerce format
    */
   mapTelegramItemsToEcommerceFormat(telegramOrderData) {
-    const items = [];
+  const items = [];
 
-    // Handle different telegram bot data formats
-    if (telegramOrderData.product_name && telegramOrderData.quantity) {
-      // Single product format
+  logger.info('Mapping telegram items to ecommerce format', {
+    hasProducts: !!telegramOrderData.products,
+    hasCartData: !!telegramOrderData.orderAttributes?.cart_products,
+    cartTotal: telegramOrderData.orderAttributes?.cart_total
+  });
+
+  // Handle products array (preferred method)
+  if (telegramOrderData.products && Array.isArray(telegramOrderData.products)) {
+    telegramOrderData.products.forEach(product => {
+      // ✅ FIX: Calculate unit price from cart total
+      const totalCartAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || telegramOrderData.sum || 0);
+      const totalQuantity = telegramOrderData.products.reduce((sum, p) => sum + parseInt(p.quantity || 1), 0);
+      const unitPrice = totalQuantity > 0 ? totalCartAmount / totalQuantity : 0;
+
       items.push({
-        productId: this.mapTelegramProductToEcommerceId(telegramOrderData.product_name),
-        quantity: parseInt(telegramOrderData.quantity),
-        unitPrice: parseFloat(telegramOrderData.product_price || telegramOrderData.sum || 0)
+        productId: product.id,
+        quantity: parseInt(product.quantity || 1),
+        unitPrice: parseFloat(product.unitPrice || product.price || unitPrice)
       });
-    } else if (telegramOrderData.products && Array.isArray(telegramOrderData.products)) {
-      // Multiple products format
-      telegramOrderData.products.forEach(product => {
-        items.push({
-          productId: product.id || this.mapTelegramProductToEcommerceId(product.name),
-          quantity: parseInt(product.quantity || 1),
-          unitPrice: parseFloat(product.unitPrice || product.price || 0)
-        });
-      });
-    } else if (telegramOrderData.order_text) {
-      // Parse from order text (fallback)
-      const parsedItems = this.parseOrderTextToItems(telegramOrderData.order_text, telegramOrderData.sum);
-      items.push(...parsedItems);
-    }
-
-    if (items.length === 0) {
-      // Default fallback
-      items.push({
-        productId: 1, // Default product ID
-        quantity: 1,
-        unitPrice: parseFloat(telegramOrderData.sum || telegramOrderData.totalAmount || 0)
-      });
-    }
-
-    return items;
+    });
+  } 
+  // Handle single product format
+  else if (telegramOrderData.product_name && telegramOrderData.quantity) {
+    const unitPrice = parseFloat(telegramOrderData.product_price || 
+                                telegramOrderData.sum || 
+                                telegramOrderData.orderAttributes?.cart_total || 0) / parseInt(telegramOrderData.quantity);
+    
+    items.push({
+      productId: this.mapTelegramProductToEcommerceId(telegramOrderData.product_name),
+      quantity: parseInt(telegramOrderData.quantity),
+      unitPrice: unitPrice
+    });
   }
+  // Parse from cart products string (fallback)
+  else if (telegramOrderData.orderAttributes?.cart_products) {
+    const parsedItems = this.parseCartProductsString(
+      telegramOrderData.orderAttributes.cart_products,
+      telegramOrderData.orderAttributes.cart_total
+    );
+    items.push(...parsedItems);
+  }
+
+  // Final fallback
+  if (items.length === 0) {
+    const totalAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || 
+                                 telegramOrderData.sum || 
+                                 telegramOrderData.totalAmount || 0);
+    
+    items.push({
+      productId: 1, // Default product ID
+      quantity: 1,
+      unitPrice: totalAmount
+    });
+  }
+
+  logger.info('Items mapped successfully', {
+    itemsCount: items.length,
+    totalValue: items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0),
+    items: items.map(item => ({ 
+      productId: item.productId, 
+      quantity: item.quantity, 
+      unitPrice: item.unitPrice 
+    }))
+  });
+
+  return items;
+}
+
+/**
+ * NEW: Parse cart products string like "СИР КИСЛОМОЛОЧНИЙ (ТВОРОГ) x6"
+ */
+parseCartProductsString(cartProductsString, cartTotal) {
+  const items = [];
+  const totalAmount = parseFloat(cartTotal || 0);
+  
+  // Extract quantity from string like "СИР КИСЛОМОЛОЧНИЙ (ТВОРОГ) x6"
+  const quantityMatch = cartProductsString.match(/x(\d+)/i);
+  const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+  
+  // Extract product name (remove quantity part)
+  const productName = cartProductsString.replace(/\s*x\d+$/i, '').trim();
+  
+  items.push({
+    productId: this.mapTelegramProductToEcommerceId(productName),
+    quantity: quantity,
+    unitPrice: totalAmount / quantity
+  });
+
+  return items;
+}
 
   /**
    * Map telegram product name to ecommerce product ID
