@@ -616,11 +616,11 @@ async createDealWithAttributes(dealData) {
       { attributeId: 923277, value: dealData.delivery?.station || 'Unknown' },
       { attributeId: 923278, value: dealData.orderAttributes?.product_price_str || dealData.products.map(p => `${p.unitPrice} CHF`).join(', ') },
       { attributeId: 923279, value: dealData.orderAttributes?.quantity || dealData.products.reduce((sum, p) => sum + p.quantity, 0).toString() },
-      { attributeId: 923428, value: dealData.orderAttributes?.question || "" },
+      { attributeId: 923428, value: dealData.orderAttributes?.question || "Unknown" },
       { attributeId: 923605, value: dealData.orderAttributes?.sum || dealData.price.toString() },
       { attributeId: 923606, value: dealData.orderAttributes?.product_price || dealData.products.map(p => p.unitPrice).join(', ') },
       { attributeId: 923613, value: dealData.orderAttributes?.product_name || dealData.products.map(p => p.name).join(', ') },
-      { attributeId: 923614, value: dealData.orderAttributes?.tvorog_kg || "" }
+      { attributeId: 923614, value: dealData.orderAttributes?.tvorog_kg || "Unknown" }
     ];
 
     const dealRequest = {
