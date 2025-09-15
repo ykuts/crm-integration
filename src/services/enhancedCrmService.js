@@ -640,7 +640,7 @@ async createDealWithAttributes(dealData) {
       attributesCount: attributes.length
     });
 
-    const response = await this.client.post('/crm/v1/deals', dealRequest);
+    const response = await this.client.post('/deals', dealRequest);
 
     const dealId = response.data?.data?.id;
     if (!dealId) {
