@@ -424,20 +424,13 @@ async ensureValidToken() {
 }
 
 /**
- * Find contact by messenger external ID (telegram contact_id)
+ * Find contact by messenger external ID (FIXED)
  */
 async findContactByMessengerExternalId(externalContactId) {
   try {
     logger.info('Looking up contact by messenger external ID', { externalContactId });
 
-    const response = await axios.get(
-      `https://api.sendpulse.com/crm/v1/contacts/messenger-external/${externalContactId}`, 
-      {
-        headers: {
-          'Authorization': `Bearer ${await this.ensureValidToken()}`
-        }
-      }
-    );
+    const response = await this.client.get(`/contacts/messenger-external/${externalContactId}`);
 
     const contact = response.data?.data?.data || response.data?.data;
 
@@ -445,9 +438,7 @@ async findContactByMessengerExternalId(externalContactId) {
       logger.info('Contact found via messenger external ID', {
         externalContactId,
         sendpulseId: contact.id,
-        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
-        hasPhone: !!contact.phones?.[0]?.phone,
-        hasEmail: !!contact.emails?.[0]?.email
+        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
       });
       return contact;
     }
@@ -649,12 +640,7 @@ async createDealWithAttributes(dealData) {
       attributesCount: attributes.length
     });
 
-    const response = await axios.post('https://api.sendpulse.com/crm/v1/deals', dealRequest, {
-      headers: {
-        'Authorization': `Bearer ${await this.ensureValidToken()}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    const response = await this.client.post('/crm/v1/deals', dealRequest);
 
     const dealId = response.data?.data?.id;
     if (!dealId) {
@@ -687,17 +673,12 @@ async createDealWithAttributes(dealData) {
  */
 async addProductToDeal(dealId, product) {
   try {
-    await axios.post('https://api.sendpulse.com/crm/v1/products/deals', {
+    await this.client.post('/products/deals', {
       productId: product.sendpulseId,
       dealId: dealId,
       productPriceISO: 'CHF',
       productPriceValue: product.unitPrice,
       quantity: product.quantity
-    }, {
-      headers: {
-        'Authorization': `Bearer ${await this.ensureValidToken()}`,
-        'Content-Type': 'application/json'
-      }
     });
 
   } catch (error) {
@@ -787,15 +768,9 @@ async updateDeal(dealId, updateData) {
       ];
     }
 
-    const response = await axios.patch(
-      `https://api.sendpulse.com/crm/v1/deals/${dealId}`,
-      updatePayload,
-      {
-        headers: {
-          'Authorization': `Bearer ${await this.ensureValidToken()}`,
-          'Content-Type': 'application/json'
-        }
-      }
+    const response = await this.client.patch(
+      `/deals/${dealId}`,
+      updatePayload
     );
 
     logger.info('Deal updated successfully', { dealId });
@@ -820,14 +795,9 @@ async findContactByPhone(phone) {
   try {
     logger.info('Searching contact by phone', { phone });
     
-    const response = await axios.post('https://api.sendpulse.com/crm/v1/contacts/get-list', {
+    const response = await this.client.post('/contacts/get-list', {
       phone: phone,
       limit: 1
-    }, {
-      headers: {
-        'Authorization': `Bearer ${await this.ensureValidToken()}`,
-        'Content-Type': 'application/json'
-      }
     });
 
     const contacts = response.data?.data?.list || [];
@@ -856,12 +826,8 @@ async findContactByPhone(phone) {
 async getDealDetails(dealId) {
   try {
     logger.info('Getting deal details', { dealId });
-    
-    const response = await axios.get(`https://api.sendpulse.com/crm/v1/deals/${dealId}`, {
-      headers: {
-        'Authorization': `Bearer ${await this.ensureValidToken()}`
-      }
-    });
+
+    const response = await this.client.get(`/deals/${dealId}`);
 
     const dealData = response.data?.data || response.data;
     
