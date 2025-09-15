@@ -416,31 +416,636 @@ export class EnhancedCrmService extends SendPulseCrmService {
     }
   }
 
-  /**
-   * Helper methods
-   */
-  
-  mapStationNameToId(stationName) {
-    // Map station name to ID - you'll need to implement this based on your stations
-    const stationMapping = {
-      'Zurich HB': 1,
-      'Zürich HB': 1,
-      'Geneva': 2,
-      'Genève': 2,
-      'Basel': 3,
-      'Bern': 4,
-      'Lausanne': 5,
-      // Add more mappings based on your railway stations
-    };
-    
-    return stationMapping[stationName] || 1; // Default to first station
+/**
+ * Delegate token management to parent class
+ */
+async ensureValidToken() {
+  return await super.ensureValidToken();
+}
+
+/**
+ * Find contact by messenger external ID (telegram contact_id)
+ */
+async findContactByMessengerExternalId(externalContactId) {
+  try {
+    logger.info('Looking up contact by messenger external ID', { externalContactId });
+
+    const response = await axios.get(
+      `https://api.sendpulse.com/crm/v1/contacts/messenger-external/${externalContactId}`, 
+      {
+        headers: {
+          'Authorization': `Bearer ${await this.ensureValidToken()}`
+        }
+      }
+    );
+
+    const contact = response.data?.data?.data || response.data?.data;
+
+    if (contact) {
+      logger.info('Contact found via messenger external ID', {
+        externalContactId,
+        sendpulseId: contact.id,
+        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim(),
+        hasPhone: !!contact.phones?.[0]?.phone,
+        hasEmail: !!contact.emails?.[0]?.email
+      });
+      return contact;
+    }
+
+    return null;
+
+  } catch (error) {
+    if (error.response?.status === 404) {
+      logger.info('Contact not found by messenger external ID', { externalContactId });
+      return null;
+    }
+
+    logger.error('Failed to lookup contact by messenger external ID', {
+      error: error.message,
+      status: error.response?.status,
+      externalContactId
+    });
+    throw error;
+  }
+}
+
+/**
+ * Create order in CRM only (for existing BotController compatibility)
+ * This method creates deal in SendPulse CRM using the existing logic from BotController
+ */
+async createOrderInCRM(telegramOrderData) {
+    try {
+      logger.info('Creating order in CRM (SendPulse only)', {
+        contact_id: telegramOrderData.contact_id,
+        hasProducts: !!telegramOrderData.products
+      });
+
+      // Step 1: Find contact using messenger external ID with fallback
+      let contact = null;
+      if (telegramOrderData.contact_id) {
+        contact = await this.findContactByMessengerExternalId(telegramOrderData.contact_id);
+      }
+
+      // IMPROVED: Try alternative contact finding methods if not found
+      if (!contact) {
+        logger.warn('Contact not found by messenger ID, trying alternative methods', {
+          contact_id: telegramOrderData.contact_id
+        });
+        
+        contact = await this.findOrCreateTelegramContact(telegramOrderData);
+      }
+
+      if (!contact) {
+        throw new Error(`Failed to find or create contact for telegram order. Contact ID: ${telegramOrderData.contact_id}`);
+      }
+
+      // Step 2: Validate and enrich products
+      let enrichedProducts = [];
+      try {
+        if (telegramOrderData.products && Array.isArray(telegramOrderData.products)) {
+          enrichedProducts = await this.enrichProductsWithPricing(telegramOrderData.products);
+        } else {
+          // Fallback for simple order data
+          enrichedProducts = [{
+            id: 1,
+            sendpulseId: 1,
+            name: telegramOrderData.product_name || telegramOrderData.order_text || 'Telegram Order',
+            quantity: parseInt(telegramOrderData.quantity) || 1,
+            unitPrice: parseFloat(telegramOrderData.sum || telegramOrderData.totalAmount || 0),
+            totalPrice: parseFloat(telegramOrderData.sum || telegramOrderData.totalAmount || 0)
+          }];
+        }
+      } catch (productError) {
+        logger.error('Product enrichment failed, using fallback', {
+          error: productError.message,
+          telegramProducts: telegramOrderData.products
+        });
+        
+        // Create fallback product
+        enrichedProducts = [{
+          id: 1,
+          sendpulseId: 1,
+          name: 'Telegram Order (Product mapping failed)',
+          quantity: 1,
+          unitPrice: parseFloat(telegramOrderData.sum || telegramOrderData.totalAmount || 0),
+          totalPrice: parseFloat(telegramOrderData.sum || telegramOrderData.totalAmount || 0)
+        }];
+      }
+
+      const totalAmount = enrichedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
+
+      // Step 3: Create deal with attributes
+      const deal = await this.createDealWithAttributes({
+        title: telegramOrderData.orderAttributes?.order_text || 
+               telegramOrderData.order_text || 
+               `Telegram Order - ${enrichedProducts.map(p => p.name).join(', ')}`,
+        price: parseFloat(telegramOrderData.orderAttributes?.sum || telegramOrderData.sum || totalAmount),
+        currency: 'CHF',
+        contact: contact,
+        products: enrichedProducts,
+        delivery: {
+          city: telegramOrderData.city || telegramOrderData.deliveryInfo?.city,
+          station: telegramOrderData.station || telegramOrderData.deliveryInfo?.station,
+          canton: telegramOrderData.canton || telegramOrderData.deliveryInfo?.canton
+        },
+        source: 'telegram',
+        orderAttributes: telegramOrderData.orderAttributes || {}
+      });
+
+      // Step 4: Add products to deal (with error handling)
+      for (const product of enrichedProducts) {
+        try {
+          await this.addProductToDeal(deal.id, product);
+          logger.debug('Product added to deal', {
+            productId: product.sendpulseId,
+            quantity: product.quantity
+          });
+        } catch (error) {
+          logger.warn('Failed to add product to deal, continuing', {
+            error: error.message,
+            productId: product.id,
+            productName: product.name
+          });
+          // Continue with order creation even if some products fail to add
+        }
+      }
+
+      logger.info('CRM order creation completed', {
+        dealId: deal.id,
+        contactId: contact.id,
+        totalAmount
+      });
+
+      return {
+        dealId: deal.id,
+        contactId: contact.id,
+        orderNumber: `SP-${deal.id}`,
+        totalAmount,
+        status: 'created'
+      };
+
+    } catch (error) {
+      logger.error('CRM order creation failed', {
+        error: error.message,
+        stack: error.stack,
+        telegramOrderData: {
+          contact_id: telegramOrderData.contact_id,
+          hasProducts: !!telegramOrderData.products
+        }
+      });
+      throw error;
+    }
   }
 
-  getNextDeliveryDate() {
-    // Get next available delivery date (e.g., tomorrow if before cutoff time)
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(10, 0, 0, 0); // Set to 10:00 AM
-    return tomorrow.toISOString();
+/**
+ * Create deal with attributes (from your BotController logic)
+ */
+async createDealWithAttributes(dealData) {
+  try {
+    logger.info('Creating deal with attributes', {
+      title: dealData.title,
+      price: dealData.price,
+      contactId: dealData.contact.id
+    });
+
+    // Build attributes from order data (your existing logic)
+    const attributes = [
+      { attributeId: 922104, value: `${dealData.delivery?.city || 'Unknown'}, ${dealData.delivery?.station || 'Unknown'}` },
+      { attributeId: 922108, value: dealData.orderAttributes?.order_text || dealData.products.map(p => `${p.name} x${p.quantity}`).join(', ') },
+      { attributeId: 922119, value: dealData.orderAttributes?.question || "Не указано" },
+      { attributeId: 922130, value: "Не оплачено" },
+      { attributeId: 922253, value: dealData.delivery?.station || 'Unknown' },
+      { attributeId: 922255, value: `${dealData.delivery?.city || 'Unknown'}, ${dealData.delivery?.canton || 'Unknown'}` },
+      { attributeId: 922259, value: dealData.orderAttributes?.sum || dealData.price.toString() },
+      { attributeId: 923272, value: dealData.orderAttributes?.order_text || dealData.products.map(p => `${p.name} x${p.quantity}`).join(', ') },
+      { attributeId: 923273, value: dealData.orderAttributes?.language || "uk" },
+      { attributeId: 923274, value: dealData.orderAttributes?.fullname || `${dealData.contact.firstName || ''} ${dealData.contact.lastName || ''}`.trim() },
+      { attributeId: 923275, value: dealData.delivery?.canton || 'Unknown' },
+      { attributeId: 923276, value: dealData.delivery?.city || 'Unknown' },
+      { attributeId: 923277, value: dealData.delivery?.station || 'Unknown' },
+      { attributeId: 923278, value: dealData.orderAttributes?.product_price_str || dealData.products.map(p => `${p.unitPrice} CHF`).join(', ') },
+      { attributeId: 923279, value: dealData.orderAttributes?.quantity || dealData.products.reduce((sum, p) => sum + p.quantity, 0).toString() },
+      { attributeId: 923428, value: dealData.orderAttributes?.question || "" },
+      { attributeId: 923605, value: dealData.orderAttributes?.sum || dealData.price.toString() },
+      { attributeId: 923606, value: dealData.orderAttributes?.product_price || dealData.products.map(p => p.unitPrice).join(', ') },
+      { attributeId: 923613, value: dealData.orderAttributes?.product_name || dealData.products.map(p => p.name).join(', ') },
+      { attributeId: 923614, value: dealData.orderAttributes?.tvorog_kg || "" }
+    ];
+
+    const dealRequest = {
+      pipelineId: parseInt(process.env.SENDPULSE_PIPELINE_ID) || 153270,
+      stepId: parseInt(process.env.SENDPULSE_STEP_ID) || 529997,
+      name: dealData.title,
+      price: dealData.price,
+      currency: dealData.currency,
+      contact: [dealData.contact.id],
+      attributes: attributes
+    };
+
+    logger.info('Sending deal request to SendPulse', {
+      pipelineId: dealRequest.pipelineId,
+      stepId: dealRequest.stepId,
+      contactId: dealData.contact.id,
+      attributesCount: attributes.length
+    });
+
+    const response = await axios.post('https://api.sendpulse.com/crm/v1/deals', dealRequest, {
+      headers: {
+        'Authorization': `Bearer ${await this.ensureValidToken()}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const dealId = response.data?.data?.id;
+    if (!dealId) {
+      throw new Error('Deal ID not found in response');
+    }
+
+    logger.info('Deal created successfully with attributes', {
+      dealId: dealId,
+      dealName: dealRequest.name,
+      attributesApplied: attributes.length
+    });
+
+    return {
+      ...response.data.data,
+      id: dealId
+    };
+
+  } catch (error) {
+    logger.error('Create deal with attributes failed', {
+      error: error.message,
+      response: error.response?.data,
+      dealTitle: dealData.title
+    });
+    throw error;
   }
+}
+
+/**
+ * Add product to deal
+ */
+async addProductToDeal(dealId, product) {
+  try {
+    await axios.post('https://api.sendpulse.com/crm/v1/products/deals', {
+      productId: product.sendpulseId,
+      dealId: dealId,
+      productPriceISO: 'CHF',
+      productPriceValue: product.unitPrice,
+      quantity: product.quantity
+    }, {
+      headers: {
+        'Authorization': `Bearer ${await this.ensureValidToken()}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+  } catch (error) {
+    logger.error('Add product to deal failed', {
+      error: error.message,
+      dealId,
+      productId: product.sendpulseId,
+      productName: product.name
+    });
+    throw error;
+  }
+}
+
+/**
+ * Enrich products with pricing (delegate to database service)
+ */
+async enrichProductsWithPricing(products) {
+  const enrichedProducts = [];
+
+  for (const product of products) {
+    try {
+      // Get product details from ecommerce database
+      const ecommerceProduct = await this.dbService.getEcommerceProduct(product.id);
+      
+      if (!ecommerceProduct) {
+        throw new Error(`Product with ID ${product.id} not found in ecommerce database`);
+      }
+
+      // Get SendPulse mapping
+      const mapping = await this.dbService.getProductMapping(product.id);
+      if (!mapping) {
+        throw new Error(`Product ${product.id} is not mapped to SendPulse. Product: ${ecommerceProduct.name}`);
+      }
+
+      const quantity = parseInt(product.quantity) || 1;
+      const unitPrice = parseFloat(ecommerceProduct.price) || 0;
+
+      enrichedProducts.push({
+        id: product.id,
+        sendpulseId: mapping.sendpulseId,
+        name: ecommerceProduct.name,
+        sku: ecommerceProduct.sku,
+        description: ecommerceProduct.description,
+        quantity: quantity,
+        unitPrice: unitPrice,
+        totalPrice: unitPrice * quantity,
+        category: ecommerceProduct.category,
+        weight: ecommerceProduct.weight || 0
+      });
+
+    } catch (error) {
+      logger.error('Product enrichment failed', {
+        productId: product.id,
+        error: error.message
+      });
+      throw new Error(`Failed to enrich product ${product.id}: ${error.message}`);
+    }
+  }
+
+  return enrichedProducts;
+}
+
+/**
+ * Update deal in SendPulse CRM
+ */
+async updateDeal(dealId, updateData) {
+  try {
+    logger.info('Updating deal in SendPulse', { dealId, updateData });
+
+    const updatePayload = {};
+    
+    if (updateData.status) {
+      // Map your status to SendPulse step IDs
+      const statusMapping = {
+        'PENDING': 529997,
+        'CONFIRMED': 529998, 
+        'SHIPPED': 529999,
+        'DELIVERED': 530000,
+        'CANCELLED': 530001
+      };
+      updatePayload.stepId = statusMapping[updateData.status];
+    }
+
+    if (updateData.notes) {
+      updatePayload.attributes = [
+        { attributeId: 922119, value: updateData.notes }
+      ];
+    }
+
+    const response = await axios.patch(
+      `https://api.sendpulse.com/crm/v1/deals/${dealId}`,
+      updatePayload,
+      {
+        headers: {
+          'Authorization': `Bearer ${await this.ensureValidToken()}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    logger.info('Deal updated successfully', { dealId });
+    return response.data;
+
+  } catch (error) {
+    logger.error('Update deal failed', {
+      error: error.message,
+      dealId,
+      updateData
+    });
+    throw error;
+  }
+}
+
+// Add these additional helper methods to src/services/enhancedCrmService.js
+
+/**
+ * Find contact by phone number
+ */
+async findContactByPhone(phone) {
+  try {
+    logger.info('Searching contact by phone', { phone });
+    
+    const response = await axios.post('https://api.sendpulse.com/crm/v1/contacts/get-list', {
+      phone: phone,
+      limit: 1
+    }, {
+      headers: {
+        'Authorization': `Bearer ${await this.ensureValidToken()}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const contacts = response.data?.data?.list || [];
+    const contact = contacts.length > 0 ? contacts[0] : null;
+    
+    if (contact) {
+      logger.info('Contact found by phone', { contactId: contact.id, phone });
+    } else {
+      logger.info('No contact found by phone', { phone });
+    }
+
+    return contact;
+
+  } catch (error) {
+    logger.error('Find contact by phone failed', {
+      error: error.message,
+      phone: phone
+    });
+    throw error;
+  }
+}
+
+/**
+ * Get deal details from SendPulse
+ */
+async getDealDetails(dealId) {
+  try {
+    logger.info('Getting deal details', { dealId });
+    
+    const response = await axios.get(`https://api.sendpulse.com/crm/v1/deals/${dealId}`, {
+      headers: {
+        'Authorization': `Bearer ${await this.ensureValidToken()}`
+      }
+    });
+
+    const dealData = response.data?.data || response.data;
+    
+    logger.info('Deal details retrieved', { 
+      dealId, 
+      title: dealData.name || dealData.title,
+      status: dealData.status 
+    });
+
+    return dealData;
+
+  } catch (error) {
+    logger.error('Get deal details failed', {
+      error: error.message,
+      dealId
+    });
+    throw error;
+  }
+}
+
+/**
+ * Enhanced helper methods - move these from BotController to here
+ */
+
+/**
+ * Map station name to ID for delivery
+ */
+mapStationNameToId(stationName) {
+  const stationMapping = {
+    'Zurich HB': 1, 
+    'Zürich HB': 1,
+    'Geneva': 2, 
+    'Genève': 2,
+    'Basel': 3, 
+    'Bern': 4, 
+    'Lausanne': 5,
+    'Nyon': 6,
+    'Vevey': 7,
+    'Montreux': 8,
+    'Sion': 9,
+    'Fribourg': 10
+  };
+  
+  if (!stationName) {
+    logger.warn('No station name provided, using default');
+    return 1;
+  }
+  
+  const stationId = stationMapping[stationName] || 1;
+  logger.debug('Station mapped', { stationName, stationId });
+  
+  return stationId;
+}
+
+/**
+ * Get next available delivery date
+ */
+getNextDeliveryDate() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(10, 0, 0, 0); // Set to 10:00 AM
+  
+  const deliveryDate = tomorrow.toISOString();
+  logger.debug('Next delivery date calculated', { deliveryDate });
+  
+  return deliveryDate;
+}
+
+/**
+   * FIXED: Create or find contact for telegram orders
+   */
+  async findOrCreateTelegramContact(telegramOrderData) {
+    try {
+      // First try to find by messenger external ID
+      if (telegramOrderData.contact_id) {
+        const existingContact = await this.findContactByMessengerExternalId(telegramOrderData.contact_id);
+        if (existingContact) {
+          logger.info('Found existing contact by messenger ID', { 
+            contactId: existingContact.id,
+            externalId: telegramOrderData.contact_id 
+          });
+          return existingContact;
+        }
+      }
+
+      // Try to find by phone if available
+      const phone = telegramOrderData.phone || telegramOrderData.customer?.phone;
+      if (phone) {
+        const contactByPhone = await this.findContactByPhone(phone);
+        if (contactByPhone) {
+          logger.info('Found existing contact by phone', { 
+            contactId: contactByPhone.id,
+            phone 
+          });
+          return contactByPhone;
+        }
+      }
+
+      // If not found, create new contact using parent class method
+      const newContactData = {
+        firstName: telegramOrderData.fullname?.split(' ')[0] || 
+                   telegramOrderData.customer?.firstName || 
+                   'Telegram',
+        lastName: telegramOrderData.fullname?.split(' ').slice(1).join(' ') || 
+                  telegramOrderData.customer?.lastName || 
+                  'User',
+        phone: phone || '',
+        email: telegramOrderData.email || telegramOrderData.customer?.email || '',
+        source: 'telegram-bot'
+      };
+
+      logger.info('Creating new contact for telegram order', { 
+        firstName: newContactData.firstName,
+        lastName: newContactData.lastName,
+        hasPhone: !!newContactData.phone
+      });
+
+      // FIXED: Use the correct parent method
+      const newContact = await super.findOrCreateContact(newContactData);
+      
+      return newContact;
+
+    } catch (error) {
+      logger.error('Failed to find or create telegram contact', {
+        error: error.message,
+        contact_id: telegramOrderData.contact_id,
+        phone: telegramOrderData.phone
+      });
+      throw error;
+    }
+  }
+
+/**
+ * Validate telegram order data before processing
+ */
+validateTelegramOrderData(orderData) {
+  const errors = [];
+
+  // Required fields
+  if (!orderData.contact_id) {
+    errors.push('contact_id is required');
+  }
+
+  if (!orderData.products || !Array.isArray(orderData.products) || orderData.products.length === 0) {
+    // Check if we have alternative product data
+    if (!orderData.product_name && !orderData.order_text) {
+      errors.push('products array, product_name, or order_text is required');
+    }
+  }
+
+  // Validate products if provided
+  if (orderData.products && Array.isArray(orderData.products)) {
+    orderData.products.forEach((product, index) => {
+      if (!product.id) {
+        errors.push(`Product ${index + 1}: id is required`);
+      }
+      if (!product.quantity || product.quantity <= 0) {
+        errors.push(`Product ${index + 1}: quantity must be positive`);
+      }
+    });
+  }
+
+  // Check for minimum order amount
+  const totalAmount = parseFloat(orderData.sum || orderData.totalAmount || 0);
+  if (totalAmount <= 0) {
+    errors.push('Order total amount must be greater than 0');
+  }
+
+  if (errors.length > 0) {
+    const errorMessage = `Telegram order validation failed: ${errors.join(', ')}`;
+    logger.error('Order validation failed', { 
+      errors, 
+      contact_id: orderData.contact_id 
+    });
+    throw new Error(errorMessage);
+  }
+
+  logger.info('Telegram order data validation passed', {
+    contact_id: orderData.contact_id,
+    productCount: orderData.products?.length || 0,
+    totalAmount
+  });
+
+  return true;
+}
+
 }
