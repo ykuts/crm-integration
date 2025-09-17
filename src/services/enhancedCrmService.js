@@ -74,17 +74,17 @@ export class EnhancedCrmService extends SendPulseCRMService {
     }
   }
 
-  /**
-   * Create order in ecommerce database via API
-   */
-  async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
+/**
+ * Create order in ecommerce database via API - FIXED VERSION
+ */
+async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
   try {
     logger.info('Creating order in ecommerce database', { botOrderId });
 
-    // Map telegram bot data to ecommerce order format
-    const items = this.mapTelegramItemsToEcommerceFormat(telegramOrderData);
+    // ✅ FIX: Add await because mapTelegramItemsToEcommerceFormat is now async
+    const items = await this.mapTelegramItemsToEcommerceFormat(telegramOrderData);
     
-    // ✅ FIX: Calculate total amount from cart data or fallback to items
+    // Calculate total amount from cart data or fallback to items
     const totalAmount = telegramOrderData.orderAttributes?.cart_total || 
                        telegramOrderData.sum || 
                        telegramOrderData.totalAmount ||
@@ -129,7 +129,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
                telegramOrderData.canton || 'Unknown'
       },
       
-      // ✅ FIX: Use calculated total amount
+      // Use calculated total amount
       totalAmount: parseFloat(totalAmount),
       paymentMethod: 'CASH',
       paymentStatus: 'PENDING',
@@ -149,8 +149,19 @@ export class EnhancedCrmService extends SendPulseCRMService {
       totalAmount: orderPayload.totalAmount,
       itemsCount: items.length,
       customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`,
-      deliveryStation: orderPayload.deliveryAddress.station
+      deliveryStation: orderPayload.deliveryAddress.station,
+      items: items // Log the actual items array for debugging
     });
+
+    // Validate items array before sending
+    if (!items || items.length === 0) {
+      logger.error('No items found in order payload', {
+        telegramProducts: telegramOrderData.products,
+        orderAttributes: telegramOrderData.orderAttributes,
+        hasCartProducts: !!telegramOrderData.orderAttributes?.cart_products
+      });
+      throw new Error('Order must contain at least one item');
+    }
 
     // Test connection first
     await this.testEcommerceConnection();
@@ -173,6 +184,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
       orderId: order.id,
       botOrderId,
       totalAmount: order.totalAmount,
+      itemsCount: order.items?.length || 0,
       customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`
     });
 
