@@ -202,10 +202,11 @@ export class EnhancedCrmService extends SendPulseCRMService {
     }
   }
 
-  /**
-   * Map telegram order items to ecommerce format
-   */
-  mapTelegramItemsToEcommerceFormat(telegramOrderData) {
+/**
+ * Map telegram order items to ecommerce format
+ * Uses database prices (source of truth) + SendPulse quantities
+ */
+async mapTelegramItemsToEcommerceFormat(telegramOrderData) {
   const items = [];
 
   logger.info('Mapping telegram items to ecommerce format', {
@@ -216,34 +217,91 @@ export class EnhancedCrmService extends SendPulseCRMService {
 
   // Handle products array (preferred method)
   if (telegramOrderData.products && Array.isArray(telegramOrderData.products)) {
-    telegramOrderData.products.forEach(product => {
-      // ✅ FIX: Calculate unit price from cart total
-      const totalCartAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || telegramOrderData.sum || 0);
-      const totalQuantity = telegramOrderData.products.reduce((sum, p) => sum + parseInt(p.quantity || 1), 0);
-      const unitPrice = totalQuantity > 0 ? totalCartAmount / totalQuantity : 0;
+    for (const product of telegramOrderData.products) {
+      try {
+        // Get actual product data from database (source of truth for prices)
+        const ecommerceProduct = await this.dbService.getEcommerceProduct(product.id);
+        
+        if (!ecommerceProduct) {
+          logger.warn('Product not found in database, using fallback', { productId: product.id });
+          // Fallback to calculated price if product not found
+          const totalCartAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || telegramOrderData.sum || 0);
+          const totalQuantity = telegramOrderData.products.reduce((sum, p) => sum + parseInt(p.quantity || 1), 0);
+          const fallbackUnitPrice = totalQuantity > 0 ? totalCartAmount / totalQuantity : 0;
+          
+          items.push({
+            productId: product.id,
+            quantity: parseInt(product.quantity || 1),
+            unitPrice: fallbackUnitPrice
+          });
+          continue;
+        }
 
-      items.push({
-        productId: product.id,
-        quantity: parseInt(product.quantity || 1),
-        unitPrice: parseFloat(product.unitPrice || product.price || unitPrice)
-      });
-    });
+        // Use database price + SendPulse quantity
+        const databasePrice = parseFloat(ecommerceProduct.price);
+        const quantity = parseInt(product.quantity || 1);
+
+        items.push({
+          productId: product.id,
+          quantity: quantity,
+          unitPrice: databasePrice // Always use price from database
+        });
+
+        logger.debug('Product mapped with database price', {
+          productId: product.id,
+          productName: ecommerceProduct.name,
+          databasePrice: databasePrice,
+          quantity: quantity,
+          totalPrice: databasePrice * quantity
+        });
+
+      } catch (error) {
+        logger.error('Failed to get product from database', {
+          productId: product.id,
+          error: error.message
+        });
+        
+        // Fallback: use calculated price
+        const totalCartAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || telegramOrderData.sum || 0);
+        const totalQuantity = telegramOrderData.products.reduce((sum, p) => sum + parseInt(p.quantity || 1), 0);
+        const fallbackUnitPrice = totalQuantity > 0 ? totalCartAmount / totalQuantity : 0;
+        
+        items.push({
+          productId: product.id,
+          quantity: parseInt(product.quantity || 1),
+          unitPrice: fallbackUnitPrice
+        });
+      }
+    }
   } 
   // Handle single product format
   else if (telegramOrderData.product_name && telegramOrderData.quantity) {
-    const unitPrice = parseFloat(telegramOrderData.product_price || 
-                                telegramOrderData.sum || 
-                                telegramOrderData.orderAttributes?.cart_total || 0) / parseInt(telegramOrderData.quantity);
-    
-    items.push({
-      productId: this.mapTelegramProductToEcommerceId(telegramOrderData.product_name),
-      quantity: parseInt(telegramOrderData.quantity),
-      unitPrice: unitPrice
-    });
+    try {
+      const productId = await this.mapTelegramProductToEcommerceId(telegramOrderData.product_name);
+      const ecommerceProduct = await this.dbService.getEcommerceProduct(productId);
+      
+      items.push({
+        productId: productId,
+        quantity: parseInt(telegramOrderData.quantity),
+        unitPrice: parseFloat(ecommerceProduct.price) // Use database price
+      });
+    } catch (error) {
+      logger.error('Failed to get single product from database', { error: error.message });
+      // Fallback to calculation
+      const unitPrice = parseFloat(telegramOrderData.product_price || 
+                                  telegramOrderData.sum || 
+                                  telegramOrderData.orderAttributes?.cart_total || 0) / parseInt(telegramOrderData.quantity);
+      
+      items.push({
+        productId: await this.mapTelegramProductToEcommerceId(telegramOrderData.product_name),
+        quantity: parseInt(telegramOrderData.quantity),
+        unitPrice: unitPrice
+      });
+    }
   }
   // Parse from cart products string (fallback)
   else if (telegramOrderData.orderAttributes?.cart_products) {
-    const parsedItems = this.parseCartProductsString(
+    const parsedItems = await this.parseCartProductsString(
       telegramOrderData.orderAttributes.cart_products,
       telegramOrderData.orderAttributes.cart_total
     );
@@ -263,41 +321,106 @@ export class EnhancedCrmService extends SendPulseCRMService {
     });
   }
 
-  logger.info('Items mapped successfully', {
+  // Calculate totals for verification
+  const calculatedTotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+  const expectedTotal = parseFloat(telegramOrderData.orderAttributes?.cart_total || 
+                                  telegramOrderData.sum || 
+                                  telegramOrderData.totalAmount || 0);
+
+  logger.info('Items mapped successfully with database prices', {
     itemsCount: items.length,
-    totalValue: items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0),
+    calculatedTotal: calculatedTotal.toFixed(2),
+    expectedTotal: expectedTotal.toFixed(2),
+    difference: Math.abs(calculatedTotal - expectedTotal).toFixed(2),
     items: items.map(item => ({ 
       productId: item.productId, 
       quantity: item.quantity, 
-      unitPrice: item.unitPrice 
+      unitPrice: item.unitPrice.toFixed(2),
+      totalPrice: (item.quantity * item.unitPrice).toFixed(2)
     }))
   });
+
+  // Log warning if there's a significant price difference
+  if (Math.abs(calculatedTotal - expectedTotal) > 0.01) {
+    logger.warn('Price difference detected between database prices and cart total', {
+      calculatedTotal: calculatedTotal.toFixed(2),
+      expectedTotal: expectedTotal.toFixed(2),
+      difference: (calculatedTotal - expectedTotal).toFixed(2)
+    });
+  }
 
   return items;
 }
 
 /**
- * NEW: Parse cart products string like "СИР КИСЛОМОЛОЧНИЙ (ТВОРОГ) x6"
+ * UNIFIED: Parse cart products string with database prices (replaces both old methods)
  */
-parseCartProductsString(cartProductsString, cartTotal) {
+async parseCartProductsString(cartProductsString, cartTotal) {
   const items = [];
-  const totalAmount = parseFloat(cartTotal || 0);
   
-  // Extract quantity from string like "СИР КИСЛОМОЛОЧНИЙ (ТВОРОГ) x6"
-  const quantityMatch = cartProductsString.match(/x(\d+)/i);
-  const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
-  
-  // Extract product name (remove quantity part)
-  const productName = cartProductsString.replace(/\s*x\d+$/i, '').trim();
-  
-  items.push({
-    productId: this.mapTelegramProductToEcommerceId(productName),
-    quantity: quantity,
-    unitPrice: totalAmount / quantity
-  });
+  try {
+    // Extract quantity from string like "СИР КИСЛОМОЛОЧНИЙ (ТВОРОГ) x6"
+    const quantityMatch = cartProductsString.match(/x(\d+)/i);
+    const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+    
+    // Extract product name (remove quantity part)
+    const productName = cartProductsString.replace(/\s*x\d+$/i, '').trim();
+    const productId = await this.mapTelegramProductToEcommerceId(productName);
+    
+    // Try to get price from database first
+    try {
+      const ecommerceProduct = await this.dbService.getEcommerceProduct(productId);
+      
+      items.push({
+        productId: productId,
+        quantity: quantity,
+        unitPrice: parseFloat(ecommerceProduct.price) // Use database price
+      });
+
+      logger.info('Cart product parsed with database price', {
+        productName,
+        productId,
+        quantity,
+        databasePrice: ecommerceProduct.price
+      });
+
+    } catch (dbError) {
+      logger.warn('Failed to get database price, using cart calculation', { 
+        productId, 
+        error: dbError.message 
+      });
+      
+      // Fallback to cart total calculation
+      const totalAmount = parseFloat(cartTotal || 0);
+      items.push({
+        productId: productId,
+        quantity: quantity,
+        unitPrice: totalAmount / quantity
+      });
+    }
+
+  } catch (error) {
+    logger.error('Failed to parse cart products string', { 
+      error: error.message,
+      cartProductsString 
+    });
+    
+    // Final fallback
+    const totalAmount = parseFloat(cartTotal || 0);
+    const quantityMatch = cartProductsString.match(/x(\d+)/i);
+    const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+    const productName = cartProductsString.replace(/\s*x\d+$/i, '').trim();
+    
+    items.push({
+      productId: await this.mapTelegramProductToEcommerceId(productName),
+      quantity: quantity,
+      unitPrice: totalAmount / quantity
+    });
+  }
 
   return items;
 }
+
 
   /**
  * Database-driven product mapping (using existing DatabaseService)
