@@ -81,8 +81,47 @@ async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
   try {
     logger.info('Creating order in ecommerce database', { botOrderId });
 
-    // ✅ FIX: Add await because mapTelegramItemsToEcommerceFormat is now async
+    // Add await because mapTelegramItemsToEcommerceFormat is now async
     const items = await this.mapTelegramItemsToEcommerceFormat(telegramOrderData);
+    
+    // Check station mapping and determine delivery type
+    const requestedStation = telegramOrderData.deliveryInfo?.station || telegramOrderData.station;
+    const mappedStationId = this.mapStationNameToId(requestedStation);
+
+    // Check if station was not found in mapping (returns default Vevey ID: 11)
+    // If no station provided or not found in mapping, switch to pickup
+    const isStationFound = requestedStation && this.isStationInMapping(requestedStation);
+    
+    let deliveryType, deliveryStationId, deliveryAddress;
+    
+    if (!isStationFound) {
+      // Station not found - use pickup in Nyon
+      logger.info('Station not found in mapping, switching to pickup', {
+        requestedStation,
+        botOrderId
+      });
+      
+      deliveryType = 'PICKUP';
+      deliveryStationId = null;
+      deliveryAddress = {
+        city: 'Nyon',
+        street: 'chemin de Pré-Fleuri',
+        house: '5',
+        canton: 'VD',
+        postalCode: '1260'
+      };
+    } else {
+      // Station found - use railway delivery
+      deliveryType = 'RAILWAY_STATION';
+      deliveryStationId = mappedStationId;
+      deliveryAddress = {
+        city: telegramOrderData.deliveryInfo?.city || 
+              telegramOrderData.city || 'Unknown',
+        station: requestedStation,
+        canton: telegramOrderData.deliveryInfo?.canton || 
+               telegramOrderData.canton || 'Unknown'
+      };
+    }
     
     // Calculate total amount from cart data or fallback to items
     const totalAmount = telegramOrderData.orderAttributes?.cart_total || 
@@ -105,29 +144,19 @@ async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
         lastName: telegramOrderData.orderAttributes?.fullname?.split(' ').slice(1).join(' ') || 
                  telegramOrderData.fullname?.split(' ').slice(1).join(' ') || 
                  telegramOrderData.customerInfo?.lastName || 
-                 'User',
+                 'Користувач',
         phone: telegramOrderData.customerInfo?.phone || 
                telegramOrderData.phone || '',
         email: telegramOrderData.customerInfo?.email || 
                telegramOrderData.email || ''
       },
       
-      // Delivery information
-      deliveryType: 'RAILWAY_STATION',
-      deliveryStationId: this.mapStationNameToId(
-        telegramOrderData.deliveryInfo?.station || 
-        telegramOrderData.station
-      ),
+      // Delivery information - dynamic based on station availability
+      deliveryType: deliveryType,
+      deliveryStationId: deliveryStationId,
       deliveryDate: telegramOrderData.deliveryDate || this.getNextDeliveryDate(),
-      deliveryTimeSlot: telegramOrderData.deliveryTimeSlot || 'morning',
-      deliveryAddress: {
-        city: telegramOrderData.deliveryInfo?.city || 
-              telegramOrderData.city || 'Unknown',
-        station: telegramOrderData.deliveryInfo?.station || 
-                telegramOrderData.station || 'Unknown',
-        canton: telegramOrderData.deliveryInfo?.canton || 
-               telegramOrderData.canton || 'Unknown'
-      },
+      deliveryTimeSlot: telegramOrderData.deliveryTimeSlot || 'ранок (8:00-12:00)',
+      deliveryAddress: deliveryAddress,
       
       // Use calculated total amount
       totalAmount: parseFloat(totalAmount),
@@ -139,7 +168,9 @@ async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
       notesClient: telegramOrderData.question || 
                   telegramOrderData.notes || 
                   telegramOrderData.orderAttributes?.cart_products || '',
-      notesAdmin: `Created from Telegram bot. Chat ID: ${telegramOrderData.contact_id || telegramOrderData.chatId}. Cart: ${telegramOrderData.orderAttributes?.cart_products || ''}`,
+      notesAdmin: `Надійшло з Telegram bot. ${!isStationFound ? 
+        `Станцію "${requestedStation}" не знайдено, переключено на самовивіз у Ньоні. ` : ''}` +
+        `Кошик: ${telegramOrderData.orderAttributes?.cart_products || ''}`,
       
       // Order items
       items: items
@@ -149,7 +180,10 @@ async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
       totalAmount: orderPayload.totalAmount,
       itemsCount: items.length,
       customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`,
-      deliveryStation: orderPayload.deliveryAddress.station,
+      deliveryType: deliveryType,
+      deliveryStation: deliveryType === 'RAILWAY_STATION' ? orderPayload.deliveryAddress.station : 'N/A',
+      deliveryCity: orderPayload.deliveryAddress.city,
+      stationMappingFound: isStationFound,
       items: items // Log the actual items array for debugging
     });
 
@@ -185,7 +219,9 @@ async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
       botOrderId,
       totalAmount: order.totalAmount,
       itemsCount: order.items?.length || 0,
-      customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`
+      customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`,
+      finalDeliveryType: deliveryType,
+      deliveryLocation: deliveryType === 'PICKUP' ? 'Nyon' : orderPayload.deliveryAddress.station
     });
 
     return order;
@@ -1109,24 +1145,24 @@ async getDealDetails(dealId) {
 }
 
 /**
- * Enhanced helper methods - move these from BotController to here
+ * Check if station exists in mapping (helper function for createOrderInEcommerceDB)
  */
+isStationInMapping(stationName) {
+  if (!stationName) {
+    return false;
+  }
 
-/**
- * Map station name to ID for delivery
- */
-mapStationNameToId(stationName) {
   const stationMapping = {
     // Based on your actual database stations
     'Montreux': 3,
     'Lausanne': 4, 
     'Morges': 6,
     'Geneva': 7,
-    'Genève': 7,      // Alternative spelling
+    'Genève': 7,     // Alternative spelling
     'Aigle': 10,
     'Vevey': 11,
     'Rolle': 12,
-    
+              
     // Common variations and fallbacks
     'Montreux 12:10': 3,
     'Lausanne 13:00': 4,
@@ -1137,15 +1173,59 @@ mapStationNameToId(stationName) {
     'Vevey 11:40': 11,
     'Rolle 10:15-10:30': 12
   };
-  
-  if (!stationName) {
-    logger.warn('No station name provided, using default (Vevey)');
-    return 11; // Default to Vevey
+
+  // First try exact match
+  if (stationMapping[stationName]) {
+    return true;
   }
-  
+
+  // Try case-insensitive partial match
+  const lowerStationName = stationName.toLowerCase();
+  for (const key of Object.keys(stationMapping)) {
+    if (key.toLowerCase().includes(lowerStationName) || 
+        lowerStationName.includes(key.toLowerCase())) {
+      return true;
+    }
+  }
+
+  // Station not found in mapping
+  return false;
+}
+
+/**
+ * Updated mapStationNameToId function (for reference - no need to change existing)
+ */
+mapStationNameToId(stationName) {
+  const stationMapping = {
+    // Based on your actual database stations
+    'Montreux': 3,
+    'Lausanne': 4, 
+    'Morges': 6,
+    'Geneva': 7,
+    'Genève': 7,     // Alternative spelling
+    'Aigle': 10,
+    'Vevey': 11,
+    'Rolle': 12,
+             
+    // Common variations and fallbacks
+    'Montreux 12:10': 3,
+    'Lausanne 13:00': 4,
+    'Morges 13:35': 6,
+    'Geneva 18:20-18:30': 7,
+    'Genève 18:20-18:30': 7,
+    'Aigle по телефону': 10,
+    'Vevey 11:40': 11,
+    'Rolle 10:15-10:30': 12
+  };
+
+  if (!stationName) {
+    logger.warn('No station name provided, station not found in mapping');
+    return null; // Changed from default Vevey ID to null
+  }
+
   // First try exact match
   let stationId = stationMapping[stationName];
-  
+
   // If no exact match, try case-insensitive partial match
   if (!stationId) {
     const lowerStationName = stationName.toLowerCase();
@@ -1153,26 +1233,22 @@ mapStationNameToId(stationName) {
       if (key.toLowerCase().includes(lowerStationName) || 
           lowerStationName.includes(key.toLowerCase())) {
         stationId = id;
-        logger.info('Station mapped by partial match', { 
-          input: stationName, 
-          matched: key, 
-          stationId 
+        logger.info('Station mapped by partial match', {
+          input: stationName,
+          matched: key,
+          stationId
         });
         break;
       }
     }
   }
-  
-  // Final fallback
-  const finalStationId = stationId || 11; // Default to Vevey (most central)
-  
-  logger.info('Station mapping result', { 
-    input: stationName, 
-    output: finalStationId,
-    mappingUsed: stationId ? 'direct' : 'default'
-  });
-  
-  return finalStationId;
+
+  if (!stationId) {
+    logger.warn('Station not found in mapping', { stationName });
+    return null; // Station not found - will trigger pickup mode
+  }
+
+  return stationId;
 }
 
 /**
