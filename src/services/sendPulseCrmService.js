@@ -463,4 +463,279 @@ export class SendPulseCRMService {
       };
     }
   }
+
+  // ============================================
+// BOT VARIABLE MANAGEMENT METHODS
+// Add these methods to your existing sendPulseCrmService.js
+// ============================================
+
+/**
+ * Set variable for bot contact
+ * @param {string} botType - Bot type: 'telegram', 'whatsapp', 'messenger'
+ * @param {string} contactId - Bot contact ID (from webhook)
+ * @param {Object} variables - Variables to set: { variable_name: value }
+ * @returns {Promise<Object>}
+ */
+async setBotVariable(botType, contactId, variables) {
+  try {
+    logger.info('Setting bot variable', { 
+      botType, 
+      contactId, 
+      variables 
+    });
+
+    // Validate bot type
+    const validBotTypes = ['telegram', 'whatsapp', 'messenger'];
+    if (!validBotTypes.includes(botType)) {
+      throw new Error(`Invalid bot type: ${botType}. Must be one of: ${validBotTypes.join(', ')}`);
+    }
+
+    // Bot API base URLs
+    const botApiUrls = {
+      telegram: 'https://api.sendpulse.com/telegram',
+      whatsapp: 'https://api.sendpulse.com/whatsapp',
+      messenger: 'https://api.sendpulse.com/fb'
+    };
+
+    const baseUrl = botApiUrls[botType];
+
+    // Prepare variables array for API
+    const variablesArray = Object.entries(variables).map(([name, value]) => ({
+      variable_name: name,
+      variable_value: String(value) // Convert to string for API
+    }));
+
+    // Make API request
+    const response = await axios.post(
+      `${baseUrl}/contacts/setVariable`,
+      {
+        contact_id: contactId,
+        variables: variablesArray
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    logger.info('Bot variable set successfully', {
+      contactId,
+      variableCount: variablesArray.length
+    });
+
+    return {
+      success: true,
+      data: response.data
+    };
+
+  } catch (error) {
+    logger.error('Failed to set bot variable', {
+      error: error.message,
+      response: error.response?.data,
+      botType,
+      contactId
+    });
+
+    // Don't throw - variable setting is not critical for order processing
+    return {
+      success: false,
+      error: error.message,
+      details: error.response?.data
+    };
+  }
+}
+
+/**
+ * Delete variable from bot contact
+ * @param {string} botType - Bot type: 'telegram', 'whatsapp', 'messenger'
+ * @param {string} contactId - Bot contact ID
+ * @param {string} variableName - Variable name to delete
+ * @returns {Promise<Object>}
+ */
+async deleteBotVariable(botType, contactId, variableName) {
+  try {
+    logger.info('Deleting bot variable', {
+      botType,
+      contactId,
+      variableName
+    });
+
+    const validBotTypes = ['telegram', 'whatsapp', 'messenger'];
+    if (!validBotTypes.includes(botType)) {
+      throw new Error(`Invalid bot type: ${botType}`);
+    }
+
+    const botApiUrls = {
+      telegram: 'https://api.sendpulse.com/telegram',
+      whatsapp: 'https://api.sendpulse.com/whatsapp',
+      messenger: 'https://api.sendpulse.com/fb'
+    };
+
+    const baseUrl = botApiUrls[botType];
+
+    const response = await axios.post(
+      `${baseUrl}/contacts/deleteVariable`,
+      {
+        contact_id: contactId,
+        variable_name: variableName
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    logger.info('Bot variable deleted successfully', {
+      contactId,
+      variableName
+    });
+
+    return {
+      success: true,
+      data: response.data
+    };
+
+  } catch (error) {
+    logger.error('Failed to delete bot variable', {
+      error: error.message,
+      response: error.response?.data,
+      botType,
+      contactId,
+      variableName
+    });
+
+    return {
+      success: false,
+      error: error.message,
+      details: error.response?.data
+    };
+  }
+}
+
+/**
+ * Update active order status variable for bot contact
+ * Main method to call when order status changes
+ * @param {Object} params
+ * @param {string} params.botType - Bot type: 'telegram', 'whatsapp', 'messenger'
+ * @param {string} params.contactId - Bot contact ID
+ * @param {boolean} params.hasActiveOrder - Whether contact has active order
+ * @returns {Promise<Object>}
+ */
+async updateActiveOrderVariable({ botType, contactId, hasActiveOrder }) {
+  try {
+    logger.info('Updating has_active_order variable', {
+      botType,
+      contactId,
+      hasActiveOrder
+    });
+
+    // Set variable value: '1' for true, '0' for false
+    const variableValue = hasActiveOrder ? '1' : '0';
+
+    const result = await this.setBotVariable(botType, contactId, {
+      has_active_order: variableValue
+    });
+
+    if (result.success) {
+      logger.info('Active order variable updated successfully', {
+        contactId,
+        value: variableValue
+      });
+    } else {
+      logger.warn('Failed to update active order variable (non-critical)', {
+        contactId,
+        error: result.error
+      });
+    }
+
+    return result;
+
+  } catch (error) {
+    logger.error('Error updating active order variable', {
+      error: error.message,
+      botType,
+      contactId
+    });
+
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Get bot variables for contact
+ * Useful for debugging and testing
+ * @param {string} botType - Bot type
+ * @param {string} contactId - Bot contact ID
+ * @returns {Promise<Object>}
+ */
+async getBotContactVariables(botType, contactId) {
+  try {
+    logger.info('Getting bot contact variables', {
+      botType,
+      contactId
+    });
+
+    const validBotTypes = ['telegram', 'whatsapp', 'messenger'];
+    if (!validBotTypes.includes(botType)) {
+      throw new Error(`Invalid bot type: ${botType}`);
+    }
+
+    const botApiUrls = {
+      telegram: 'https://api.sendpulse.com/telegram',
+      whatsapp: 'https://api.sendpulse.com/whatsapp',
+      messenger: 'https://api.sendpulse.com/fb'
+    };
+
+    const baseUrl = botApiUrls[botType];
+
+    const response = await axios.get(
+      `${baseUrl}/contacts/get`,
+      {
+        params: { id: contactId },
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    const contactData = response.data?.data;
+
+    logger.info('Bot contact variables retrieved', {
+      contactId,
+      hasVariables: !!contactData?.variables
+    });
+
+    return {
+      success: true,
+      contact: contactData,
+      variables: contactData?.variables || {}
+    };
+
+  } catch (error) {
+    logger.error('Failed to get bot contact variables', {
+      error: error.message,
+      response: error.response?.data,
+      botType,
+      contactId
+    });
+
+    return {
+      success: false,
+      error: error.message,
+      details: error.response?.data
+    };
+  }
+}
+
 }

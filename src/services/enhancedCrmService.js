@@ -12,33 +12,69 @@ export class EnhancedCrmService extends SendPulseCRMService {
   }
 
   /**
-   * Create order in both ecommerce DB and SendPulse CRM
-   * @param {Object} telegramOrderData - Order data from Telegram bot
-   * @returns {Object} Combined result with both DB and CRM IDs
-   */
+ * Create order in both ecommerce DB and SendPulse CRM
+ * @param {Object} telegramOrderData - Order data from Telegram bot
+ * @returns {Object} Combined result with both DB and CRM IDs
+ */
   async createTelegramOrderComplete(telegramOrderData) {
     const botOrderId = `TG_${Date.now()}_${telegramOrderData.chatId || telegramOrderData.contact_id}`;
-    
+
     try {
-      logger.info('Starting complete Telegram order creation', { 
-        botOrderId, 
+      logger.info('Starting complete Telegram order creation', {
+        botOrderId,
         chatId: telegramOrderData.chatId || telegramOrderData.contact_id
       });
 
       // Step 1: Create order in ecommerce database
       const ecommerceOrder = await this.createOrderInEcommerceDB(telegramOrderData, botOrderId);
-      
+
       // Step 2: Create deal in SendPulse CRM
       const crmResult = await this.createOrderInCRM(telegramOrderData);
-      
+
       // Step 3: Update ecommerce order with CRM IDs
       await this.updateEcommerceOrderWithCrmIds(ecommerceOrder.id, crmResult);
-      
+
       // Step 4: Store bot order mapping for tracking
       await this.storeBotOrderMapping(telegramOrderData, botOrderId, ecommerceOrder.id, crmResult);
-      
+
       // Step 5: Log successful sync
       await this.logOrderSync(ecommerceOrder.id, crmResult.dealId, 'CREATE', 'SUCCESS');
+
+      // ========================================
+      // NEW: Step 6: Set bot variable has_active_order = 1
+      // ========================================
+      setImmediate(async () => {
+        try {
+          const contactId = telegramOrderData.contact_id || telegramOrderData.chatId;
+          const source = telegramOrderData.source || 'telegram';
+
+          logger.info('Setting has_active_order variable', {
+            botOrderId,
+            contactId,
+            source
+          });
+
+          await this.updateActiveOrderVariable({
+            botType: source,
+            contactId: contactId,
+            hasActiveOrder: true
+          });
+
+          logger.info('Bot variable has_active_order set to 1', {
+            botOrderId,
+            contactId
+          });
+
+        } catch (varError) {
+          // Don't fail the order if variable update fails
+          logger.warn('Failed to set has_active_order variable (non-critical)', {
+            error: varError.message,
+            botOrderId,
+            contactId: telegramOrderData.contact_id || telegramOrderData.chatId
+          });
+        }
+      });
+      // ========================================
 
       const result = {
         success: true,
@@ -74,159 +110,159 @@ export class EnhancedCrmService extends SendPulseCRMService {
     }
   }
 
-/**
- * Create order in ecommerce database via API - FIXED VERSION
- */
-async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
-  try {
-    logger.info('Creating order in ecommerce database', { botOrderId });
+  /**
+   * Create order in ecommerce database via API - FIXED VERSION
+   */
+  async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
+    try {
+      logger.info('Creating order in ecommerce database', { botOrderId });
 
-    // Add await because mapTelegramItemsToEcommerceFormat is now async
-    const items = await this.mapTelegramItemsToEcommerceFormat(telegramOrderData);
-    
-    // Check station mapping and determine delivery type
-    const requestedStation = telegramOrderData.deliveryInfo?.station || telegramOrderData.station;
-    const mappedStationId = this.mapStationNameToId(requestedStation);
+      // Add await because mapTelegramItemsToEcommerceFormat is now async
+      const items = await this.mapTelegramItemsToEcommerceFormat(telegramOrderData);
 
-    // Check if station was not found in mapping (returns default Vevey ID: 11)
-    // If no station provided or not found in mapping, switch to pickup
-    const isStationFound = requestedStation && this.isStationInMapping(requestedStation);
-    
-    let deliveryType, deliveryStationId, deliveryAddress;
-    
-    if (!isStationFound) {
-      // Station not found - use pickup in Nyon
-      logger.info('Station not found in mapping, switching to pickup', {
-        requestedStation,
-        botOrderId
-      });
-      
-      deliveryType = 'PICKUP';
-      deliveryStationId = null;
-      deliveryAddress = {
-        city: 'Nyon',
-        street: 'chemin de Pré-Fleuri',
-        house: '5',
-        canton: 'VD',
-        postalCode: '1260'
-      };
-    } else {
-      // Station found - use railway delivery
-      deliveryType = 'RAILWAY_STATION';
-      deliveryStationId = mappedStationId;
-      deliveryAddress = {
-        city: telegramOrderData.deliveryInfo?.city || 
-              telegramOrderData.city || 'Unknown',
-        station: requestedStation,
-        canton: telegramOrderData.deliveryInfo?.canton || 
-               telegramOrderData.canton || 'Unknown'
-      };
-    }
-    
-    // Calculate total amount from cart data or fallback to items
-    const totalAmount = telegramOrderData.orderAttributes?.cart_total || 
-                       telegramOrderData.sum || 
-                       telegramOrderData.totalAmount ||
-                       items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+      // Check station mapping and determine delivery type
+      const requestedStation = telegramOrderData.deliveryInfo?.station || telegramOrderData.station;
+      const mappedStationId = this.mapStationNameToId(requestedStation);
 
-    const orderPayload = {
-      // Order source and identification
-      orderSource: 'TELEGRAM_BOT',
-      externalOrderId: botOrderId,
-      syncStatus: 'PENDING',
-      
-      // Customer information (as guest)
-      guestInfo: {
-        firstName: telegramOrderData.orderAttributes?.fullname?.split(' ')[0] || 
-                  telegramOrderData.fullname?.split(' ')[0] || 
-                  telegramOrderData.customerInfo?.firstName || 
-                  'Telegram',
-        lastName: telegramOrderData.orderAttributes?.fullname?.split(' ').slice(1).join(' ') || 
-                 telegramOrderData.fullname?.split(' ').slice(1).join(' ') || 
-                 telegramOrderData.customerInfo?.lastName || 
-                 'Користувач',
-        phone: telegramOrderData.customerInfo?.phone || 
-               telegramOrderData.phone || '',
-        email: telegramOrderData.customerInfo?.email || 
-               telegramOrderData.email || ''
-      },
-      
-      // Delivery information - dynamic based on station availability
-      deliveryType: deliveryType,
-      deliveryStationId: deliveryStationId,
-      deliveryDate: telegramOrderData.deliveryDate || this.getNextDeliveryDate(),
-      deliveryTimeSlot: telegramOrderData.deliveryTimeSlot || 'ранок (8:00-12:00)',
-      deliveryAddress: deliveryAddress,
-      
-      // Use calculated total amount
-      totalAmount: parseFloat(totalAmount),
-      paymentMethod: 'CASH',
-      paymentStatus: 'PENDING',
-      status: 'PENDING',
-      
-      // Notes with more info
-      notesClient: telegramOrderData.question || 
-                  telegramOrderData.notes || 
-                  telegramOrderData.orderAttributes?.cart_products || '',
-      notesAdmin: `Надійшло з Telegram bot. ${!isStationFound ? 
-        `Станцію "${requestedStation}" не знайдено, переключено на самовивіз у Ньоні. ` : ''}` +
-        `Кошик: ${telegramOrderData.orderAttributes?.cart_products || ''}`,
-      
-      // Order items
-      items: items
-    };
+      // Check if station was not found in mapping (returns default Vevey ID: 11)
+      // If no station provided or not found in mapping, switch to pickup
+      const isStationFound = requestedStation && this.isStationInMapping(requestedStation);
 
-    logger.info('Order payload for ecommerce DB', {
-      totalAmount: orderPayload.totalAmount,
-      itemsCount: items.length,
-      customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`,
-      deliveryType: deliveryType,
-      deliveryStation: deliveryType === 'RAILWAY_STATION' ? orderPayload.deliveryAddress.station : 'N/A',
-      deliveryCity: orderPayload.deliveryAddress.city,
-      stationMappingFound: isStationFound,
-      items: items // Log the actual items array for debugging
-    });
+      let deliveryType, deliveryStationId, deliveryAddress;
 
-    // Validate items array before sending
-    if (!items || items.length === 0) {
-      logger.error('No items found in order payload', {
-        telegramProducts: telegramOrderData.products,
-        orderAttributes: telegramOrderData.orderAttributes,
-        hasCartProducts: !!telegramOrderData.orderAttributes?.cart_products
-      });
-      throw new Error('Order must contain at least one item');
-    }
+      if (!isStationFound) {
+        // Station not found - use pickup in Nyon
+        logger.info('Station not found in mapping, switching to pickup', {
+          requestedStation,
+          botOrderId
+        });
 
-    // Test connection first
-    await this.testEcommerceConnection();
-
-    // Create order using enhanced endpoint
-    const response = await axios.post(
-      `${this.ecommerceApiUrl}/api/orders/enhanced`,
-      orderPayload,
-      {
-        headers: {
-          'X-Internal-API-Token': this.ecommerceApiToken,
-          'Content-Type': 'application/json'
-        },
-        timeout: 15000
+        deliveryType = 'PICKUP';
+        deliveryStationId = null;
+        deliveryAddress = {
+          city: 'Nyon',
+          street: 'chemin de Pré-Fleuri',
+          house: '5',
+          canton: 'VD',
+          postalCode: '1260'
+        };
+      } else {
+        // Station found - use railway delivery
+        deliveryType = 'RAILWAY_STATION';
+        deliveryStationId = mappedStationId;
+        deliveryAddress = {
+          city: telegramOrderData.deliveryInfo?.city ||
+            telegramOrderData.city || 'Unknown',
+          station: requestedStation,
+          canton: telegramOrderData.deliveryInfo?.canton ||
+            telegramOrderData.canton || 'Unknown'
+        };
       }
-    );
 
-    const order = response.data.order;
-    logger.info('Order created in ecommerce database', {
-      orderId: order.id,
-      botOrderId,
-      totalAmount: order.totalAmount,
-      itemsCount: order.items?.length || 0,
-      customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`,
-      finalDeliveryType: deliveryType,
-      deliveryLocation: deliveryType === 'PICKUP' ? 'Nyon' : orderPayload.deliveryAddress.station
-    });
+      // Calculate total amount from cart data or fallback to items
+      const totalAmount = telegramOrderData.orderAttributes?.cart_total ||
+        telegramOrderData.sum ||
+        telegramOrderData.totalAmount ||
+        items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
 
-    return order;
+      const orderPayload = {
+        // Order source and identification
+        orderSource: 'TELEGRAM_BOT',
+        externalOrderId: botOrderId,
+        syncStatus: 'PENDING',
 
-  } catch (error) {
+        // Customer information (as guest)
+        guestInfo: {
+          firstName: telegramOrderData.orderAttributes?.fullname?.split(' ')[0] ||
+            telegramOrderData.fullname?.split(' ')[0] ||
+            telegramOrderData.customerInfo?.firstName ||
+            'Telegram',
+          lastName: telegramOrderData.orderAttributes?.fullname?.split(' ').slice(1).join(' ') ||
+            telegramOrderData.fullname?.split(' ').slice(1).join(' ') ||
+            telegramOrderData.customerInfo?.lastName ||
+            'Користувач',
+          phone: telegramOrderData.customerInfo?.phone ||
+            telegramOrderData.phone || '',
+          email: telegramOrderData.customerInfo?.email ||
+            telegramOrderData.email || ''
+        },
+
+        // Delivery information - dynamic based on station availability
+        deliveryType: deliveryType,
+        deliveryStationId: deliveryStationId,
+        deliveryDate: telegramOrderData.deliveryDate || this.getNextDeliveryDate(),
+        deliveryTimeSlot: telegramOrderData.deliveryTimeSlot || 'ранок (8:00-12:00)',
+        deliveryAddress: deliveryAddress,
+
+        // Use calculated total amount
+        totalAmount: parseFloat(totalAmount),
+        paymentMethod: 'CASH',
+        paymentStatus: 'PENDING',
+        status: 'PENDING',
+
+        // Notes with more info
+        notesClient: telegramOrderData.question ||
+          telegramOrderData.notes ||
+          telegramOrderData.orderAttributes?.cart_products || '',
+        notesAdmin: `Надійшло з Telegram bot. ${!isStationFound ?
+          `Станцію "${requestedStation}" не знайдено, переключено на самовивіз у Ньоні. ` : ''}` +
+          `Кошик: ${telegramOrderData.orderAttributes?.cart_products || ''}`,
+
+        // Order items
+        items: items
+      };
+
+      logger.info('Order payload for ecommerce DB', {
+        totalAmount: orderPayload.totalAmount,
+        itemsCount: items.length,
+        customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`,
+        deliveryType: deliveryType,
+        deliveryStation: deliveryType === 'RAILWAY_STATION' ? orderPayload.deliveryAddress.station : 'N/A',
+        deliveryCity: orderPayload.deliveryAddress.city,
+        stationMappingFound: isStationFound,
+        items: items // Log the actual items array for debugging
+      });
+
+      // Validate items array before sending
+      if (!items || items.length === 0) {
+        logger.error('No items found in order payload', {
+          telegramProducts: telegramOrderData.products,
+          orderAttributes: telegramOrderData.orderAttributes,
+          hasCartProducts: !!telegramOrderData.orderAttributes?.cart_products
+        });
+        throw new Error('Order must contain at least one item');
+      }
+
+      // Test connection first
+      await this.testEcommerceConnection();
+
+      // Create order using enhanced endpoint
+      const response = await axios.post(
+        `${this.ecommerceApiUrl}/api/orders/enhanced`,
+        orderPayload,
+        {
+          headers: {
+            'X-Internal-API-Token': this.ecommerceApiToken,
+            'Content-Type': 'application/json'
+          },
+          timeout: 15000
+        }
+      );
+
+      const order = response.data.order;
+      logger.info('Order created in ecommerce database', {
+        orderId: order.id,
+        botOrderId,
+        totalAmount: order.totalAmount,
+        itemsCount: order.items?.length || 0,
+        customerName: `${orderPayload.guestInfo.firstName} ${orderPayload.guestInfo.lastName}`,
+        finalDeliveryType: deliveryType,
+        deliveryLocation: deliveryType === 'PICKUP' ? 'Nyon' : orderPayload.deliveryAddress.station
+      });
+
+      return order;
+
+    } catch (error) {
       if (error.response) {
         logger.error('Ecommerce API error', {
           status: error.response.status,
@@ -235,300 +271,300 @@ async createOrderInEcommerceDB(telegramOrderData, botOrderId) {
         });
         throw new Error(`Ecommerce API error: ${error.response.data.message || error.response.statusText}`);
       } else if (error.request) {
-        logger.error('Ecommerce API timeout/network error', { 
-          error: error.message, 
-          botOrderId 
+        logger.error('Ecommerce API timeout/network error', {
+          error: error.message,
+          botOrderId
         });
         throw new Error('Failed to connect to ecommerce API');
       } else {
-        logger.error('Order creation payload error', { 
-          error: error.message, 
-          botOrderId 
+        logger.error('Order creation payload error', {
+          error: error.message,
+          botOrderId
         });
         throw error;
       }
     }
   }
 
-/**
- * Map telegram order items to ecommerce format
- * Uses database prices (source of truth) + SendPulse quantities
- */
-async mapTelegramItemsToEcommerceFormat(telegramOrderData) {
-  const items = [];
+  /**
+   * Map telegram order items to ecommerce format
+   * Uses database prices (source of truth) + SendPulse quantities
+   */
+  async mapTelegramItemsToEcommerceFormat(telegramOrderData) {
+    const items = [];
 
-  logger.info('Mapping telegram items to ecommerce format', {
-    hasProducts: !!telegramOrderData.products,
-    hasCartData: !!telegramOrderData.orderAttributes?.cart_products,
-    cartTotal: telegramOrderData.orderAttributes?.cart_total
-  });
+    logger.info('Mapping telegram items to ecommerce format', {
+      hasProducts: !!telegramOrderData.products,
+      hasCartData: !!telegramOrderData.orderAttributes?.cart_products,
+      cartTotal: telegramOrderData.orderAttributes?.cart_total
+    });
 
-  // Handle products array (preferred method)
-  if (telegramOrderData.products && Array.isArray(telegramOrderData.products)) {
-    for (const product of telegramOrderData.products) {
-      try {
-        // Get actual product data from database (source of truth for prices)
-        const ecommerceProduct = await this.dbService.getEcommerceProduct(product.id);
-        
-        if (!ecommerceProduct) {
-          logger.warn('Product not found in database, using fallback', { productId: product.id });
-          // Fallback to calculated price if product not found
+    // Handle products array (preferred method)
+    if (telegramOrderData.products && Array.isArray(telegramOrderData.products)) {
+      for (const product of telegramOrderData.products) {
+        try {
+          // Get actual product data from database (source of truth for prices)
+          const ecommerceProduct = await this.dbService.getEcommerceProduct(product.id);
+
+          if (!ecommerceProduct) {
+            logger.warn('Product not found in database, using fallback', { productId: product.id });
+            // Fallback to calculated price if product not found
+            const totalCartAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || telegramOrderData.sum || 0);
+            const totalQuantity = telegramOrderData.products.reduce((sum, p) => sum + parseInt(p.quantity || 1), 0);
+            const fallbackUnitPrice = totalQuantity > 0 ? totalCartAmount / totalQuantity : 0;
+
+            items.push({
+              productId: product.id,
+              quantity: parseInt(product.quantity || 1),
+              unitPrice: fallbackUnitPrice
+            });
+            continue;
+          }
+
+          // Use database price + SendPulse quantity
+          const databasePrice = parseFloat(ecommerceProduct.price);
+          const quantity = parseInt(product.quantity || 1);
+
+          items.push({
+            productId: product.id,
+            quantity: quantity,
+            unitPrice: databasePrice // Always use price from database
+          });
+
+          logger.debug('Product mapped with database price', {
+            productId: product.id,
+            productName: ecommerceProduct.name,
+            databasePrice: databasePrice,
+            quantity: quantity,
+            totalPrice: databasePrice * quantity
+          });
+
+        } catch (error) {
+          logger.error('Failed to get product from database', {
+            productId: product.id,
+            error: error.message
+          });
+
+          // Fallback: use calculated price
           const totalCartAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || telegramOrderData.sum || 0);
           const totalQuantity = telegramOrderData.products.reduce((sum, p) => sum + parseInt(p.quantity || 1), 0);
           const fallbackUnitPrice = totalQuantity > 0 ? totalCartAmount / totalQuantity : 0;
-          
+
           items.push({
             productId: product.id,
             quantity: parseInt(product.quantity || 1),
             unitPrice: fallbackUnitPrice
           });
-          continue;
         }
-
-        // Use database price + SendPulse quantity
-        const databasePrice = parseFloat(ecommerceProduct.price);
-        const quantity = parseInt(product.quantity || 1);
+      }
+    }
+    // Handle single product format
+    else if (telegramOrderData.product_name && telegramOrderData.quantity) {
+      try {
+        const productId = await this.mapTelegramProductToEcommerceId(telegramOrderData.product_name);
+        const ecommerceProduct = await this.dbService.getEcommerceProduct(productId);
 
         items.push({
-          productId: product.id,
-          quantity: quantity,
-          unitPrice: databasePrice // Always use price from database
+          productId: productId,
+          quantity: parseInt(telegramOrderData.quantity),
+          unitPrice: parseFloat(ecommerceProduct.price) // Use database price
         });
-
-        logger.debug('Product mapped with database price', {
-          productId: product.id,
-          productName: ecommerceProduct.name,
-          databasePrice: databasePrice,
-          quantity: quantity,
-          totalPrice: databasePrice * quantity
-        });
-
       } catch (error) {
-        logger.error('Failed to get product from database', {
-          productId: product.id,
-          error: error.message
-        });
-        
-        // Fallback: use calculated price
-        const totalCartAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || telegramOrderData.sum || 0);
-        const totalQuantity = telegramOrderData.products.reduce((sum, p) => sum + parseInt(p.quantity || 1), 0);
-        const fallbackUnitPrice = totalQuantity > 0 ? totalCartAmount / totalQuantity : 0;
-        
+        logger.error('Failed to get single product from database', { error: error.message });
+        // Fallback to calculation
+        const unitPrice = parseFloat(telegramOrderData.product_price ||
+          telegramOrderData.sum ||
+          telegramOrderData.orderAttributes?.cart_total || 0) / parseInt(telegramOrderData.quantity);
+
         items.push({
-          productId: product.id,
-          quantity: parseInt(product.quantity || 1),
-          unitPrice: fallbackUnitPrice
+          productId: await this.mapTelegramProductToEcommerceId(telegramOrderData.product_name),
+          quantity: parseInt(telegramOrderData.quantity),
+          unitPrice: unitPrice
         });
       }
     }
-  } 
-  // Handle single product format
-  else if (telegramOrderData.product_name && telegramOrderData.quantity) {
-    try {
-      const productId = await this.mapTelegramProductToEcommerceId(telegramOrderData.product_name);
-      const ecommerceProduct = await this.dbService.getEcommerceProduct(productId);
-      
+    // Parse from cart products string (fallback)
+    else if (telegramOrderData.orderAttributes?.cart_products) {
+      const parsedItems = await this.parseCartProductsString(
+        telegramOrderData.orderAttributes.cart_products,
+        telegramOrderData.orderAttributes.cart_total
+      );
+      items.push(...parsedItems);
+    }
+
+    // Final fallback
+    if (items.length === 0) {
+      const totalAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total ||
+        telegramOrderData.sum ||
+        telegramOrderData.totalAmount || 0);
+
       items.push({
-        productId: productId,
-        quantity: parseInt(telegramOrderData.quantity),
-        unitPrice: parseFloat(ecommerceProduct.price) // Use database price
-      });
-    } catch (error) {
-      logger.error('Failed to get single product from database', { error: error.message });
-      // Fallback to calculation
-      const unitPrice = parseFloat(telegramOrderData.product_price || 
-                                  telegramOrderData.sum || 
-                                  telegramOrderData.orderAttributes?.cart_total || 0) / parseInt(telegramOrderData.quantity);
-      
-      items.push({
-        productId: await this.mapTelegramProductToEcommerceId(telegramOrderData.product_name),
-        quantity: parseInt(telegramOrderData.quantity),
-        unitPrice: unitPrice
+        productId: 1, // Default product ID
+        quantity: 1,
+        unitPrice: totalAmount
       });
     }
-  }
-  // Parse from cart products string (fallback)
-  else if (telegramOrderData.orderAttributes?.cart_products) {
-    const parsedItems = await this.parseCartProductsString(
-      telegramOrderData.orderAttributes.cart_products,
-      telegramOrderData.orderAttributes.cart_total
-    );
-    items.push(...parsedItems);
-  }
 
-  // Final fallback
-  if (items.length === 0) {
-    const totalAmount = parseFloat(telegramOrderData.orderAttributes?.cart_total || 
-                                 telegramOrderData.sum || 
-                                 telegramOrderData.totalAmount || 0);
-    
-    items.push({
-      productId: 1, // Default product ID
-      quantity: 1,
-      unitPrice: totalAmount
-    });
-  }
+    // Calculate totals for verification
+    const calculatedTotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+    const expectedTotal = parseFloat(telegramOrderData.orderAttributes?.cart_total ||
+      telegramOrderData.sum ||
+      telegramOrderData.totalAmount || 0);
 
-  // Calculate totals for verification
-  const calculatedTotal = items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
-  const expectedTotal = parseFloat(telegramOrderData.orderAttributes?.cart_total || 
-                                  telegramOrderData.sum || 
-                                  telegramOrderData.totalAmount || 0);
-
-  logger.info('Items mapped successfully with database prices', {
-    itemsCount: items.length,
-    calculatedTotal: calculatedTotal.toFixed(2),
-    expectedTotal: expectedTotal.toFixed(2),
-    difference: Math.abs(calculatedTotal - expectedTotal).toFixed(2),
-    items: items.map(item => ({ 
-      productId: item.productId, 
-      quantity: item.quantity, 
-      unitPrice: item.unitPrice.toFixed(2),
-      totalPrice: (item.quantity * item.unitPrice).toFixed(2)
-    }))
-  });
-
-  // Log warning if there's a significant price difference
-  if (Math.abs(calculatedTotal - expectedTotal) > 0.01) {
-    logger.warn('Price difference detected between database prices and cart total', {
+    logger.info('Items mapped successfully with database prices', {
+      itemsCount: items.length,
       calculatedTotal: calculatedTotal.toFixed(2),
       expectedTotal: expectedTotal.toFixed(2),
-      difference: (calculatedTotal - expectedTotal).toFixed(2)
+      difference: Math.abs(calculatedTotal - expectedTotal).toFixed(2),
+      items: items.map(item => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice.toFixed(2),
+        totalPrice: (item.quantity * item.unitPrice).toFixed(2)
+      }))
     });
+
+    // Log warning if there's a significant price difference
+    if (Math.abs(calculatedTotal - expectedTotal) > 0.01) {
+      logger.warn('Price difference detected between database prices and cart total', {
+        calculatedTotal: calculatedTotal.toFixed(2),
+        expectedTotal: expectedTotal.toFixed(2),
+        difference: (calculatedTotal - expectedTotal).toFixed(2)
+      });
+    }
+
+    return items;
   }
 
-  return items;
-}
+  /**
+   * UNIFIED: Parse cart products string with database prices (replaces both old methods)
+   */
+  async parseCartProductsString(cartProductsString, cartTotal) {
+    const items = [];
 
-/**
- * UNIFIED: Parse cart products string with database prices (replaces both old methods)
- */
-async parseCartProductsString(cartProductsString, cartTotal) {
-  const items = [];
-  
-  try {
-    // Extract quantity from string like "СИР КИСЛОМОЛОЧНИЙ (ТВОРОГ) x6"
-    const quantityMatch = cartProductsString.match(/x(\d+)/i);
-    const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
-    
-    // Extract product name (remove quantity part)
-    const productName = cartProductsString.replace(/\s*x\d+$/i, '').trim();
-    const productId = await this.mapTelegramProductToEcommerceId(productName);
-    
-    // Try to get price from database first
     try {
-      const ecommerceProduct = await this.dbService.getEcommerceProduct(productId);
-      
-      items.push({
-        productId: productId,
-        quantity: quantity,
-        unitPrice: parseFloat(ecommerceProduct.price) // Use database price
+      // Extract quantity from string like "СИР КИСЛОМОЛОЧНИЙ (ТВОРОГ) x6"
+      const quantityMatch = cartProductsString.match(/x(\d+)/i);
+      const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+
+      // Extract product name (remove quantity part)
+      const productName = cartProductsString.replace(/\s*x\d+$/i, '').trim();
+      const productId = await this.mapTelegramProductToEcommerceId(productName);
+
+      // Try to get price from database first
+      try {
+        const ecommerceProduct = await this.dbService.getEcommerceProduct(productId);
+
+        items.push({
+          productId: productId,
+          quantity: quantity,
+          unitPrice: parseFloat(ecommerceProduct.price) // Use database price
+        });
+
+        logger.info('Cart product parsed with database price', {
+          productName,
+          productId,
+          quantity,
+          databasePrice: ecommerceProduct.price
+        });
+
+      } catch (dbError) {
+        logger.warn('Failed to get database price, using cart calculation', {
+          productId,
+          error: dbError.message
+        });
+
+        // Fallback to cart total calculation
+        const totalAmount = parseFloat(cartTotal || 0);
+        items.push({
+          productId: productId,
+          quantity: quantity,
+          unitPrice: totalAmount / quantity
+        });
+      }
+
+    } catch (error) {
+      logger.error('Failed to parse cart products string', {
+        error: error.message,
+        cartProductsString
       });
 
-      logger.info('Cart product parsed with database price', {
-        productName,
-        productId,
-        quantity,
-        databasePrice: ecommerceProduct.price
-      });
-
-    } catch (dbError) {
-      logger.warn('Failed to get database price, using cart calculation', { 
-        productId, 
-        error: dbError.message 
-      });
-      
-      // Fallback to cart total calculation
+      // Final fallback
       const totalAmount = parseFloat(cartTotal || 0);
+      const quantityMatch = cartProductsString.match(/x(\d+)/i);
+      const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+      const productName = cartProductsString.replace(/\s*x\d+$/i, '').trim();
+
       items.push({
-        productId: productId,
+        productId: await this.mapTelegramProductToEcommerceId(productName),
         quantity: quantity,
         unitPrice: totalAmount / quantity
       });
     }
 
-  } catch (error) {
-    logger.error('Failed to parse cart products string', { 
-      error: error.message,
-      cartProductsString 
-    });
-    
-    // Final fallback
-    const totalAmount = parseFloat(cartTotal || 0);
-    const quantityMatch = cartProductsString.match(/x(\d+)/i);
-    const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
-    const productName = cartProductsString.replace(/\s*x\d+$/i, '').trim();
-    
-    items.push({
-      productId: await this.mapTelegramProductToEcommerceId(productName),
-      quantity: quantity,
-      unitPrice: totalAmount / quantity
-    });
+    return items;
   }
-
-  return items;
-}
 
 
   /**
  * Database-driven product mapping (using existing DatabaseService)
  */
-async mapTelegramProductToEcommerceId(productName) {
-  try {
-    // Use existing method from DatabaseService
-    const productMappings = await this.dbService.getAllProductMappings();
-    
-    // First try exact name match
-    let mapping = productMappings.find(p => 
-      p.name && p.name.toLowerCase() === productName.toLowerCase()
-    );
-    
-    // If no exact match, try partial match
-    if (!mapping && productName) {
-      mapping = productMappings.find(p => 
-        p.name && (
-          p.name.toLowerCase().includes(productName.toLowerCase()) ||
-          productName.toLowerCase().includes(p.name.toLowerCase())
-        )
+  async mapTelegramProductToEcommerceId(productName) {
+    try {
+      // Use existing method from DatabaseService
+      const productMappings = await this.dbService.getAllProductMappings();
+
+      // First try exact name match
+      let mapping = productMappings.find(p =>
+        p.name && p.name.toLowerCase() === productName.toLowerCase()
       );
-    }
-    
-    if (mapping) {
-      logger.info('Product mapped from database', {
-        inputName: productName,
-        foundName: mapping.name,
-        ecommerceId: mapping.ecommerceId, // Note: camelCase in code
-        sendpulseId: mapping.sendpulseId
+
+      // If no exact match, try partial match
+      if (!mapping && productName) {
+        mapping = productMappings.find(p =>
+          p.name && (
+            p.name.toLowerCase().includes(productName.toLowerCase()) ||
+            productName.toLowerCase().includes(p.name.toLowerCase())
+          )
+        );
+      }
+
+      if (mapping) {
+        logger.info('Product mapped from database', {
+          inputName: productName,
+          foundName: mapping.name,
+          ecommerceId: mapping.ecommerceId, // Note: camelCase in code
+          sendpulseId: mapping.sendpulseId
+        });
+        return mapping.ecommerceId;
+      }
+
+      // Fallback to СИР КИСЛОМОЛОЧНИЙ (ecommerce_id: 3)
+      const fallbackMapping = productMappings.find(p =>
+        p.name && p.name.includes('КИСЛОМОЛОЧНИЙ')
+      );
+
+      if (fallbackMapping) {
+        logger.warn('Using fallback product mapping', {
+          inputName: productName,
+          fallbackName: fallbackMapping.name,
+          ecommerceId: fallbackMapping.ecommerceId
+        });
+        return fallbackMapping.ecommerceId;
+      }
+
+      // Final fallback to default product (СИР КИСЛОМОЛОЧНИЙ has ecommerce_id: 3)
+      logger.error('No product mapping found, using default (ecommerce_id: 3)', { productName });
+      return 3;
+
+    } catch (error) {
+      logger.error('Failed to map product from database', {
+        error: error.message,
+        productName
       });
-      return mapping.ecommerceId;
+      return 3; // Fallback
     }
-    
-    // Fallback to СИР КИСЛОМОЛОЧНИЙ (ecommerce_id: 3)
-    const fallbackMapping = productMappings.find(p => 
-      p.name && p.name.includes('КИСЛОМОЛОЧНИЙ')
-    );
-    
-    if (fallbackMapping) {
-      logger.warn('Using fallback product mapping', {
-        inputName: productName,
-        fallbackName: fallbackMapping.name,
-        ecommerceId: fallbackMapping.ecommerceId
-      });
-      return fallbackMapping.ecommerceId;
-    }
-    
-    // Final fallback to default product (СИР КИСЛОМОЛОЧНИЙ has ecommerce_id: 3)
-    logger.error('No product mapping found, using default (ecommerce_id: 3)', { productName });
-    return 3;
-    
-  } catch (error) {
-    logger.error('Failed to map product from database', {
-      error: error.message,
-      productName
-    });
-    return 3; // Fallback
   }
-}
 
   /**
    * Parse order text to extract items
@@ -537,11 +573,11 @@ async mapTelegramProductToEcommerceId(productName) {
     // Basic parsing - can be enhanced
     const items = [];
     const sum = parseFloat(totalSum || 0);
-    
+
     // Extract quantity if present (like "2кг", "1.5 кг")
     const quantityMatch = orderText.match(/(\d+(?:\.\d+)?)\s*кг/i);
     const quantity = quantityMatch ? parseFloat(quantityMatch[1]) : 1;
-    
+
     items.push({
       productId: this.mapTelegramProductToEcommerceId(orderText),
       quantity: quantity,
@@ -630,7 +666,7 @@ async mapTelegramProductToEcommerceId(productName) {
       };
 
       await this.dbService.createBotOrder(botOrderData);
-      
+
       logger.info('Bot order mapping stored successfully', {
         botOrderId,
         ecommerceOrderId,
@@ -712,55 +748,55 @@ async mapTelegramProductToEcommerceId(productName) {
     }
   }
 
-/**
- * Delegate token management to parent class
- */
-async ensureValidToken() {
-  return await super.ensureValidToken();
-}
-
-/**
- * Find contact by messenger external ID (FIXED)
- */
-async findContactByMessengerExternalId(externalContactId) {
-  try {
-    logger.info('Looking up contact by messenger external ID', { externalContactId });
-
-    const response = await this.client.get(`/contacts/messenger-external/${externalContactId}`);
-
-    const contact = response.data?.data?.data || response.data?.data;
-
-    if (contact) {
-      logger.info('Contact found via messenger external ID', {
-        externalContactId,
-        sendpulseId: contact.id,
-        name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
-      });
-      return contact;
-    }
-
-    return null;
-
-  } catch (error) {
-    if (error.response?.status === 404) {
-      logger.info('Contact not found by messenger external ID', { externalContactId });
-      return null;
-    }
-
-    logger.error('Failed to lookup contact by messenger external ID', {
-      error: error.message,
-      status: error.response?.status,
-      externalContactId
-    });
-    throw error;
+  /**
+   * Delegate token management to parent class
+   */
+  async ensureValidToken() {
+    return await super.ensureValidToken();
   }
-}
 
-/**
- * Create order in CRM only (for existing BotController compatibility)
- * This method creates deal in SendPulse CRM using the existing logic from BotController
- */
-async createOrderInCRM(telegramOrderData) {
+  /**
+   * Find contact by messenger external ID (FIXED)
+   */
+  async findContactByMessengerExternalId(externalContactId) {
+    try {
+      logger.info('Looking up contact by messenger external ID', { externalContactId });
+
+      const response = await this.client.get(`/contacts/messenger-external/${externalContactId}`);
+
+      const contact = response.data?.data?.data || response.data?.data;
+
+      if (contact) {
+        logger.info('Contact found via messenger external ID', {
+          externalContactId,
+          sendpulseId: contact.id,
+          name: `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
+        });
+        return contact;
+      }
+
+      return null;
+
+    } catch (error) {
+      if (error.response?.status === 404) {
+        logger.info('Contact not found by messenger external ID', { externalContactId });
+        return null;
+      }
+
+      logger.error('Failed to lookup contact by messenger external ID', {
+        error: error.message,
+        status: error.response?.status,
+        externalContactId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Create order in CRM only (for existing BotController compatibility)
+   * This method creates deal in SendPulse CRM using the existing logic from BotController
+   */
+  async createOrderInCRM(telegramOrderData) {
     try {
       logger.info('Creating order in CRM (SendPulse only)', {
         contact_id: telegramOrderData.contact_id,
@@ -778,7 +814,7 @@ async createOrderInCRM(telegramOrderData) {
         logger.warn('Contact not found by messenger ID, trying alternative methods', {
           contact_id: telegramOrderData.contact_id
         });
-        
+
         contact = await this.findOrCreateTelegramContact(telegramOrderData);
       }
 
@@ -807,7 +843,7 @@ async createOrderInCRM(telegramOrderData) {
           error: productError.message,
           telegramProducts: telegramOrderData.products
         });
-        
+
         // Create fallback product
         enrichedProducts = [{
           id: 1,
@@ -823,9 +859,9 @@ async createOrderInCRM(telegramOrderData) {
 
       // Step 3: Create deal with attributes
       const deal = await this.createDealWithAttributes({
-        title: telegramOrderData.orderAttributes?.order_text || 
-               telegramOrderData.order_text || 
-               `Telegram Order - ${enrichedProducts.map(p => p.name).join(', ')}`,
+        title: telegramOrderData.orderAttributes?.order_text ||
+          telegramOrderData.order_text ||
+          `Telegram Order - ${enrichedProducts.map(p => p.name).join(', ')}`,
         price: parseFloat(telegramOrderData.orderAttributes?.sum || telegramOrderData.sum || totalAmount),
         currency: 'CHF',
         contact: contact,
@@ -884,399 +920,399 @@ async createOrderInCRM(telegramOrderData) {
     }
   }
 
-/**
- * Create deal with attributes (from your BotController logic)
- */
-async createDealWithAttributes(dealData) {
-  try {
-    logger.info('Creating deal with attributes', {
-      title: dealData.title,
-      price: dealData.price,
-      contactId: dealData.contact.id
-    });
-
-    // Build attributes from order data (your existing logic)
-    const attributes = [
-      { attributeId: 922104, value: `${dealData.delivery?.city || 'Unknown'}, ${dealData.delivery?.station || 'Unknown'}` },
-      { attributeId: 922108, value: dealData.orderAttributes?.order_text || dealData.products.map(p => `${p.name} x${p.quantity}`).join(', ') },
-      { attributeId: 922119, value: dealData.orderAttributes?.question || "Не указано" },
-      { attributeId: 922130, value: "Не оплачено" },
-      { attributeId: 922253, value: dealData.delivery?.station || 'Unknown' },
-      { attributeId: 922255, value: `${dealData.delivery?.city || 'Unknown'}, ${dealData.delivery?.canton || 'Unknown'}` },
-      { attributeId: 922259, value: dealData.orderAttributes?.sum || dealData.price.toString() },
-      { attributeId: 923272, value: dealData.orderAttributes?.order_text || dealData.products.map(p => `${p.name} x${p.quantity}`).join(', ') },
-      { attributeId: 923273, value: dealData.orderAttributes?.language || "uk" },
-      { attributeId: 923274, value: dealData.orderAttributes?.fullname || `${dealData.contact.firstName || ''} ${dealData.contact.lastName || ''}`.trim() },
-      { attributeId: 923275, value: dealData.delivery?.canton || 'Unknown' },
-      { attributeId: 923276, value: dealData.delivery?.city || 'Unknown' },
-      { attributeId: 923277, value: dealData.delivery?.station || 'Unknown' },
-      { attributeId: 923278, value: dealData.orderAttributes?.product_price_str || dealData.products.map(p => `${p.unitPrice} CHF`).join(', ') },
-      { attributeId: 923279, value: dealData.orderAttributes?.quantity || dealData.products.reduce((sum, p) => sum + p.quantity, 0).toString() },
-      { attributeId: 923428, value: dealData.orderAttributes?.question || "Unknown" },
-      { attributeId: 923605, value: dealData.orderAttributes?.sum || dealData.price.toString() },
-      { attributeId: 923606, value: dealData.orderAttributes?.product_price || dealData.products.map(p => p.unitPrice).join(', ') },
-      { attributeId: 923613, value: dealData.orderAttributes?.product_name || dealData.products.map(p => p.name).join(', ') },
-      { attributeId: 923614, value: dealData.orderAttributes?.tvorog_kg || "Unknown" }
-    ];
-
-    const dealRequest = {
-      pipelineId: parseInt(process.env.SENDPULSE_PIPELINE_ID) || 153270,
-      stepId: parseInt(process.env.SENDPULSE_STEP_ID) || 529997,
-      name: dealData.title,
-      price: dealData.price,
-      currency: dealData.currency,
-      contact: [dealData.contact.id],
-      attributes: attributes
-    };
-
-    logger.info('Sending deal request to SendPulse', {
-      pipelineId: dealRequest.pipelineId,
-      stepId: dealRequest.stepId,
-      contactId: dealData.contact.id,
-      attributesCount: attributes.length
-    });
-
-    const response = await this.client.post('/deals', dealRequest);
-
-    const dealId = response.data?.data?.id;
-    if (!dealId) {
-      throw new Error('Deal ID not found in response');
-    }
-
-    logger.info('Deal created successfully with attributes', {
-      dealId: dealId,
-      dealName: dealRequest.name,
-      attributesApplied: attributes.length
-    });
-
-    return {
-      ...response.data.data,
-      id: dealId
-    };
-
-  } catch (error) {
-    logger.error('Create deal with attributes failed', {
-      error: error.message,
-      response: error.response?.data,
-      dealTitle: dealData.title
-    });
-    throw error;
-  }
-}
-
-/**
- * Add product to deal
- */
-async addProductToDeal(dealId, product) {
-  try {
-    await this.client.post('/products/deals', {
-      productId: product.sendpulseId,
-      dealId: dealId,
-      productPriceISO: 'CHF',
-      productPriceValue: product.unitPrice,
-      quantity: product.quantity
-    });
-
-  } catch (error) {
-    logger.error('Add product to deal failed', {
-      error: error.message,
-      dealId,
-      productId: product.sendpulseId,
-      productName: product.name
-    });
-    throw error;
-  }
-}
-
-/**
- * Enrich products with pricing (delegate to database service)
- */
-async enrichProductsWithPricing(products) {
-  const enrichedProducts = [];
-
-  for (const product of products) {
+  /**
+   * Create deal with attributes (from your BotController logic)
+   */
+  async createDealWithAttributes(dealData) {
     try {
-      // Get product details from ecommerce database
-      const ecommerceProduct = await this.dbService.getEcommerceProduct(product.id);
-      
-      if (!ecommerceProduct) {
-        throw new Error(`Product with ID ${product.id} not found in ecommerce database`);
+      logger.info('Creating deal with attributes', {
+        title: dealData.title,
+        price: dealData.price,
+        contactId: dealData.contact.id
+      });
+
+      // Build attributes from order data (your existing logic)
+      const attributes = [
+        { attributeId: 922104, value: `${dealData.delivery?.city || 'Unknown'}, ${dealData.delivery?.station || 'Unknown'}` },
+        { attributeId: 922108, value: dealData.orderAttributes?.order_text || dealData.products.map(p => `${p.name} x${p.quantity}`).join(', ') },
+        { attributeId: 922119, value: dealData.orderAttributes?.question || "Не указано" },
+        { attributeId: 922130, value: "Не оплачено" },
+        { attributeId: 922253, value: dealData.delivery?.station || 'Unknown' },
+        { attributeId: 922255, value: `${dealData.delivery?.city || 'Unknown'}, ${dealData.delivery?.canton || 'Unknown'}` },
+        { attributeId: 922259, value: dealData.orderAttributes?.sum || dealData.price.toString() },
+        { attributeId: 923272, value: dealData.orderAttributes?.order_text || dealData.products.map(p => `${p.name} x${p.quantity}`).join(', ') },
+        { attributeId: 923273, value: dealData.orderAttributes?.language || "uk" },
+        { attributeId: 923274, value: dealData.orderAttributes?.fullname || `${dealData.contact.firstName || ''} ${dealData.contact.lastName || ''}`.trim() },
+        { attributeId: 923275, value: dealData.delivery?.canton || 'Unknown' },
+        { attributeId: 923276, value: dealData.delivery?.city || 'Unknown' },
+        { attributeId: 923277, value: dealData.delivery?.station || 'Unknown' },
+        { attributeId: 923278, value: dealData.orderAttributes?.product_price_str || dealData.products.map(p => `${p.unitPrice} CHF`).join(', ') },
+        { attributeId: 923279, value: dealData.orderAttributes?.quantity || dealData.products.reduce((sum, p) => sum + p.quantity, 0).toString() },
+        { attributeId: 923428, value: dealData.orderAttributes?.question || "Unknown" },
+        { attributeId: 923605, value: dealData.orderAttributes?.sum || dealData.price.toString() },
+        { attributeId: 923606, value: dealData.orderAttributes?.product_price || dealData.products.map(p => p.unitPrice).join(', ') },
+        { attributeId: 923613, value: dealData.orderAttributes?.product_name || dealData.products.map(p => p.name).join(', ') },
+        { attributeId: 923614, value: dealData.orderAttributes?.tvorog_kg || "Unknown" }
+      ];
+
+      const dealRequest = {
+        pipelineId: parseInt(process.env.SENDPULSE_PIPELINE_ID) || 153270,
+        stepId: parseInt(process.env.SENDPULSE_STEP_ID) || 529997,
+        name: dealData.title,
+        price: dealData.price,
+        currency: dealData.currency,
+        contact: [dealData.contact.id],
+        attributes: attributes
+      };
+
+      logger.info('Sending deal request to SendPulse', {
+        pipelineId: dealRequest.pipelineId,
+        stepId: dealRequest.stepId,
+        contactId: dealData.contact.id,
+        attributesCount: attributes.length
+      });
+
+      const response = await this.client.post('/deals', dealRequest);
+
+      const dealId = response.data?.data?.id;
+      if (!dealId) {
+        throw new Error('Deal ID not found in response');
       }
 
-      // Get SendPulse mapping
-      const mapping = await this.dbService.getProductMapping(product.id);
-      if (!mapping) {
-        throw new Error(`Product ${product.id} is not mapped to SendPulse. Product: ${ecommerceProduct.name}`);
-      }
+      logger.info('Deal created successfully with attributes', {
+        dealId: dealId,
+        dealName: dealRequest.name,
+        attributesApplied: attributes.length
+      });
 
-      const quantity = parseInt(product.quantity) || 1;
-      const unitPrice = parseFloat(ecommerceProduct.price) || 0;
+      return {
+        ...response.data.data,
+        id: dealId
+      };
 
-      enrichedProducts.push({
-        id: product.id,
-        sendpulseId: mapping.sendpulseId,
-        name: ecommerceProduct.name,
-        sku: ecommerceProduct.sku,
-        description: ecommerceProduct.description,
-        quantity: quantity,
-        unitPrice: unitPrice,
-        totalPrice: unitPrice * quantity,
-        category: ecommerceProduct.category,
-        weight: ecommerceProduct.weight || 0
+    } catch (error) {
+      logger.error('Create deal with attributes failed', {
+        error: error.message,
+        response: error.response?.data,
+        dealTitle: dealData.title
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Add product to deal
+   */
+  async addProductToDeal(dealId, product) {
+    try {
+      await this.client.post('/products/deals', {
+        productId: product.sendpulseId,
+        dealId: dealId,
+        productPriceISO: 'CHF',
+        productPriceValue: product.unitPrice,
+        quantity: product.quantity
       });
 
     } catch (error) {
-      logger.error('Product enrichment failed', {
-        productId: product.id,
-        error: error.message
+      logger.error('Add product to deal failed', {
+        error: error.message,
+        dealId,
+        productId: product.sendpulseId,
+        productName: product.name
       });
-      throw new Error(`Failed to enrich product ${product.id}: ${error.message}`);
+      throw error;
     }
   }
 
-  return enrichedProducts;
-}
+  /**
+   * Enrich products with pricing (delegate to database service)
+   */
+  async enrichProductsWithPricing(products) {
+    const enrichedProducts = [];
 
-/**
- * Update deal in SendPulse CRM
- */
-async updateDeal(dealId, updateData) {
-  try {
-    logger.info('Updating deal in SendPulse', { dealId, updateData });
+    for (const product of products) {
+      try {
+        // Get product details from ecommerce database
+        const ecommerceProduct = await this.dbService.getEcommerceProduct(product.id);
 
-    const updatePayload = {};
-    
-    if (updateData.status) {
-      // Map your status to SendPulse step IDs
-      const statusMapping = {
-        'PENDING': 529997,
-        'CONFIRMED': 529998, 
-        'SHIPPED': 529999,
-        'DELIVERED': 530000,
-        'CANCELLED': 530001
-      };
-      updatePayload.stepId = statusMapping[updateData.status];
+        if (!ecommerceProduct) {
+          throw new Error(`Product with ID ${product.id} not found in ecommerce database`);
+        }
+
+        // Get SendPulse mapping
+        const mapping = await this.dbService.getProductMapping(product.id);
+        if (!mapping) {
+          throw new Error(`Product ${product.id} is not mapped to SendPulse. Product: ${ecommerceProduct.name}`);
+        }
+
+        const quantity = parseInt(product.quantity) || 1;
+        const unitPrice = parseFloat(ecommerceProduct.price) || 0;
+
+        enrichedProducts.push({
+          id: product.id,
+          sendpulseId: mapping.sendpulseId,
+          name: ecommerceProduct.name,
+          sku: ecommerceProduct.sku,
+          description: ecommerceProduct.description,
+          quantity: quantity,
+          unitPrice: unitPrice,
+          totalPrice: unitPrice * quantity,
+          category: ecommerceProduct.category,
+          weight: ecommerceProduct.weight || 0
+        });
+
+      } catch (error) {
+        logger.error('Product enrichment failed', {
+          productId: product.id,
+          error: error.message
+        });
+        throw new Error(`Failed to enrich product ${product.id}: ${error.message}`);
+      }
     }
 
-    if (updateData.notes) {
-      updatePayload.attributes = [
-        { attributeId: 922119, value: updateData.notes }
-      ];
+    return enrichedProducts;
+  }
+
+  /**
+   * Update deal in SendPulse CRM
+   */
+  async updateDeal(dealId, updateData) {
+    try {
+      logger.info('Updating deal in SendPulse', { dealId, updateData });
+
+      const updatePayload = {};
+
+      if (updateData.status) {
+        // Map your status to SendPulse step IDs
+        const statusMapping = {
+          'PENDING': 529997,
+          'CONFIRMED': 529998,
+          'SHIPPED': 529999,
+          'DELIVERED': 530000,
+          'CANCELLED': 530001
+        };
+        updatePayload.stepId = statusMapping[updateData.status];
+      }
+
+      if (updateData.notes) {
+        updatePayload.attributes = [
+          { attributeId: 922119, value: updateData.notes }
+        ];
+      }
+
+      const response = await this.client.patch(
+        `/deals/${dealId}`,
+        updatePayload
+      );
+
+      logger.info('Deal updated successfully', { dealId });
+      return response.data;
+
+    } catch (error) {
+      logger.error('Update deal failed', {
+        error: error.message,
+        dealId,
+        updateData
+      });
+      throw error;
+    }
+  }
+
+  // Add these additional helper methods to src/services/enhancedCrmService.js
+
+  /**
+   * Find contact by phone number
+   */
+  async findContactByPhone(phone) {
+    try {
+      logger.info('Searching contact by phone', { phone });
+
+      const response = await this.client.post('/contacts/get-list', {
+        phone: phone,
+        limit: 1
+      });
+
+      const contacts = response.data?.data?.list || [];
+      const contact = contacts.length > 0 ? contacts[0] : null;
+
+      if (contact) {
+        logger.info('Contact found by phone', { contactId: contact.id, phone });
+      } else {
+        logger.info('No contact found by phone', { phone });
+      }
+
+      return contact;
+
+    } catch (error) {
+      logger.error('Find contact by phone failed', {
+        error: error.message,
+        phone: phone
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get deal details from SendPulse
+   */
+  async getDealDetails(dealId) {
+    try {
+      logger.info('Getting deal details', { dealId });
+
+      const response = await this.client.get(`/deals/${dealId}`);
+
+      const dealData = response.data?.data || response.data;
+
+      logger.info('Deal details retrieved', {
+        dealId,
+        title: dealData.name || dealData.title,
+        status: dealData.status
+      });
+
+      return dealData;
+
+    } catch (error) {
+      logger.error('Get deal details failed', {
+        error: error.message,
+        dealId
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Check if station exists in mapping (helper function for createOrderInEcommerceDB)
+   */
+  isStationInMapping(stationName) {
+    if (!stationName) {
+      return false;
     }
 
-    const response = await this.client.patch(
-      `/deals/${dealId}`,
-      updatePayload
-    );
+    const stationMapping = {
+      // Based on your actual database stations
+      'Montreux': 3,
+      'Lausanne': 4,
+      'Morges': 6,
+      'Geneva': 7,
+      'Genève': 7,     // Alternative spelling
+      'Aigle': 10,
+      'Vevey': 11,
+      'Rolle': 12,
 
-    logger.info('Deal updated successfully', { dealId });
-    return response.data;
+      // Common variations and fallbacks
+      'Montreux 12:10': 3,
+      'Lausanne 13:00': 4,
+      'Morges 13:35': 6,
+      'Geneva 18:20-18:30': 7,
+      'Genève 18:20-18:30': 7,
+      'Aigle по телефону': 10,
+      'Vevey 11:40': 11,
+      'Rolle 10:15-10:30': 12
+    };
 
-  } catch (error) {
-    logger.error('Update deal failed', {
-      error: error.message,
-      dealId,
-      updateData
-    });
-    throw error;
-  }
-}
-
-// Add these additional helper methods to src/services/enhancedCrmService.js
-
-/**
- * Find contact by phone number
- */
-async findContactByPhone(phone) {
-  try {
-    logger.info('Searching contact by phone', { phone });
-    
-    const response = await this.client.post('/contacts/get-list', {
-      phone: phone,
-      limit: 1
-    });
-
-    const contacts = response.data?.data?.list || [];
-    const contact = contacts.length > 0 ? contacts[0] : null;
-    
-    if (contact) {
-      logger.info('Contact found by phone', { contactId: contact.id, phone });
-    } else {
-      logger.info('No contact found by phone', { phone });
+    // First try exact match
+    if (stationMapping[stationName]) {
+      return true;
     }
 
-    return contact;
+    // Try case-insensitive partial match
+    const lowerStationName = stationName.toLowerCase();
+    for (const key of Object.keys(stationMapping)) {
+      if (key.toLowerCase().includes(lowerStationName) ||
+        lowerStationName.includes(key.toLowerCase())) {
+        return true;
+      }
+    }
 
-  } catch (error) {
-    logger.error('Find contact by phone failed', {
-      error: error.message,
-      phone: phone
-    });
-    throw error;
-  }
-}
-
-/**
- * Get deal details from SendPulse
- */
-async getDealDetails(dealId) {
-  try {
-    logger.info('Getting deal details', { dealId });
-
-    const response = await this.client.get(`/deals/${dealId}`);
-
-    const dealData = response.data?.data || response.data;
-    
-    logger.info('Deal details retrieved', { 
-      dealId, 
-      title: dealData.name || dealData.title,
-      status: dealData.status 
-    });
-
-    return dealData;
-
-  } catch (error) {
-    logger.error('Get deal details failed', {
-      error: error.message,
-      dealId
-    });
-    throw error;
-  }
-}
-
-/**
- * Check if station exists in mapping (helper function for createOrderInEcommerceDB)
- */
-isStationInMapping(stationName) {
-  if (!stationName) {
+    // Station not found in mapping
     return false;
   }
 
-  const stationMapping = {
-    // Based on your actual database stations
-    'Montreux': 3,
-    'Lausanne': 4, 
-    'Morges': 6,
-    'Geneva': 7,
-    'Genève': 7,     // Alternative spelling
-    'Aigle': 10,
-    'Vevey': 11,
-    'Rolle': 12,
-              
-    // Common variations and fallbacks
-    'Montreux 12:10': 3,
-    'Lausanne 13:00': 4,
-    'Morges 13:35': 6,
-    'Geneva 18:20-18:30': 7,
-    'Genève 18:20-18:30': 7,
-    'Aigle по телефону': 10,
-    'Vevey 11:40': 11,
-    'Rolle 10:15-10:30': 12
-  };
+  /**
+   * Updated mapStationNameToId function (for reference - no need to change existing)
+   */
+  mapStationNameToId(stationName) {
+    const stationMapping = {
+      // Based on your actual database stations
+      'Montreux': 3,
+      'Lausanne': 4,
+      'Morges': 6,
+      'Geneva': 7,
+      'Genève': 7,     // Alternative spelling
+      'Aigle': 10,
+      'Vevey': 11,
+      'Rolle': 12,
 
-  // First try exact match
-  if (stationMapping[stationName]) {
-    return true;
-  }
+      // Common variations and fallbacks
+      'Montreux 12:10': 3,
+      'Lausanne 13:00': 4,
+      'Morges 13:35': 6,
+      'Geneva 18:20-18:30': 7,
+      'Genève 18:20-18:30': 7,
+      'Aigle по телефону': 10,
+      'Vevey 11:40': 11,
+      'Rolle 10:15-10:30': 12
+    };
 
-  // Try case-insensitive partial match
-  const lowerStationName = stationName.toLowerCase();
-  for (const key of Object.keys(stationMapping)) {
-    if (key.toLowerCase().includes(lowerStationName) || 
-        lowerStationName.includes(key.toLowerCase())) {
-      return true;
+    if (!stationName) {
+      logger.warn('No station name provided, station not found in mapping');
+      return null; // Changed from default Vevey ID to null
     }
-  }
 
-  // Station not found in mapping
-  return false;
-}
+    // First try exact match
+    let stationId = stationMapping[stationName];
 
-/**
- * Updated mapStationNameToId function (for reference - no need to change existing)
- */
-mapStationNameToId(stationName) {
-  const stationMapping = {
-    // Based on your actual database stations
-    'Montreux': 3,
-    'Lausanne': 4, 
-    'Morges': 6,
-    'Geneva': 7,
-    'Genève': 7,     // Alternative spelling
-    'Aigle': 10,
-    'Vevey': 11,
-    'Rolle': 12,
-             
-    // Common variations and fallbacks
-    'Montreux 12:10': 3,
-    'Lausanne 13:00': 4,
-    'Morges 13:35': 6,
-    'Geneva 18:20-18:30': 7,
-    'Genève 18:20-18:30': 7,
-    'Aigle по телефону': 10,
-    'Vevey 11:40': 11,
-    'Rolle 10:15-10:30': 12
-  };
-
-  if (!stationName) {
-    logger.warn('No station name provided, station not found in mapping');
-    return null; // Changed from default Vevey ID to null
-  }
-
-  // First try exact match
-  let stationId = stationMapping[stationName];
-
-  // If no exact match, try case-insensitive partial match
-  if (!stationId) {
-    const lowerStationName = stationName.toLowerCase();
-    for (const [key, id] of Object.entries(stationMapping)) {
-      if (key.toLowerCase().includes(lowerStationName) || 
+    // If no exact match, try case-insensitive partial match
+    if (!stationId) {
+      const lowerStationName = stationName.toLowerCase();
+      for (const [key, id] of Object.entries(stationMapping)) {
+        if (key.toLowerCase().includes(lowerStationName) ||
           lowerStationName.includes(key.toLowerCase())) {
-        stationId = id;
-        logger.info('Station mapped by partial match', {
-          input: stationName,
-          matched: key,
-          stationId
-        });
-        break;
+          stationId = id;
+          logger.info('Station mapped by partial match', {
+            input: stationName,
+            matched: key,
+            stationId
+          });
+          break;
+        }
       }
     }
+
+    if (!stationId) {
+      logger.warn('Station not found in mapping', { stationName });
+      return null; // Station not found - will trigger pickup mode
+    }
+
+    return stationId;
   }
 
-  if (!stationId) {
-    logger.warn('Station not found in mapping', { stationName });
-    return null; // Station not found - will trigger pickup mode
-  }
-
-  return stationId;
-}
-
-/**
- * Get next available delivery date
- */
-getNextDeliveryDate() {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(10, 0, 0, 0); // Set to 10:00 AM
-  
-  const deliveryDate = tomorrow.toISOString();
-  logger.debug('Next delivery date calculated', { deliveryDate });
-  
-  return deliveryDate;
-}
-
-/**
-   * FIXED: Create or find contact for telegram orders
+  /**
+   * Get next available delivery date
    */
+  getNextDeliveryDate() {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0); // Set to 10:00 AM
+
+    const deliveryDate = tomorrow.toISOString();
+    logger.debug('Next delivery date calculated', { deliveryDate });
+
+    return deliveryDate;
+  }
+
+  /**
+     * FIXED: Create or find contact for telegram orders
+     */
   async findOrCreateTelegramContact(telegramOrderData) {
     try {
       // First try to find by messenger external ID
       if (telegramOrderData.contact_id) {
         const existingContact = await this.findContactByMessengerExternalId(telegramOrderData.contact_id);
         if (existingContact) {
-          logger.info('Found existing contact by messenger ID', { 
+          logger.info('Found existing contact by messenger ID', {
             contactId: existingContact.id,
-            externalId: telegramOrderData.contact_id 
+            externalId: telegramOrderData.contact_id
           });
           return existingContact;
         }
@@ -1287,9 +1323,9 @@ getNextDeliveryDate() {
       if (phone) {
         const contactByPhone = await this.findContactByPhone(phone);
         if (contactByPhone) {
-          logger.info('Found existing contact by phone', { 
+          logger.info('Found existing contact by phone', {
             contactId: contactByPhone.id,
-            phone 
+            phone
           });
           return contactByPhone;
         }
@@ -1297,18 +1333,18 @@ getNextDeliveryDate() {
 
       // If not found, create new contact using parent class method
       const newContactData = {
-        firstName: telegramOrderData.fullname?.split(' ')[0] || 
-                   telegramOrderData.customer?.firstName || 
-                   'Telegram',
-        lastName: telegramOrderData.fullname?.split(' ').slice(1).join(' ') || 
-                  telegramOrderData.customer?.lastName || 
-                  'User',
+        firstName: telegramOrderData.fullname?.split(' ')[0] ||
+          telegramOrderData.customer?.firstName ||
+          'Telegram',
+        lastName: telegramOrderData.fullname?.split(' ').slice(1).join(' ') ||
+          telegramOrderData.customer?.lastName ||
+          'User',
         phone: phone || '',
         email: telegramOrderData.email || telegramOrderData.customer?.email || '',
         source: 'telegram-bot'
       };
 
-      logger.info('Creating new contact for telegram order', { 
+      logger.info('Creating new contact for telegram order', {
         firstName: newContactData.firstName,
         lastName: newContactData.lastName,
         hasPhone: !!newContactData.phone
@@ -1316,7 +1352,7 @@ getNextDeliveryDate() {
 
       // FIXED: Use the correct parent method
       const newContact = await super.findOrCreateContact(newContactData);
-      
+
       return newContact;
 
     } catch (error) {
@@ -1329,58 +1365,58 @@ getNextDeliveryDate() {
     }
   }
 
-/**
- * Validate telegram order data before processing
- */
-validateTelegramOrderData(orderData) {
-  const errors = [];
+  /**
+   * Validate telegram order data before processing
+   */
+  validateTelegramOrderData(orderData) {
+    const errors = [];
 
-  // Required fields
-  if (!orderData.contact_id) {
-    errors.push('contact_id is required');
-  }
-
-  if (!orderData.products || !Array.isArray(orderData.products) || orderData.products.length === 0) {
-    // Check if we have alternative product data
-    if (!orderData.product_name && !orderData.order_text) {
-      errors.push('products array, product_name, or order_text is required');
+    // Required fields
+    if (!orderData.contact_id) {
+      errors.push('contact_id is required');
     }
-  }
 
-  // Validate products if provided
-  if (orderData.products && Array.isArray(orderData.products)) {
-    orderData.products.forEach((product, index) => {
-      if (!product.id) {
-        errors.push(`Product ${index + 1}: id is required`);
+    if (!orderData.products || !Array.isArray(orderData.products) || orderData.products.length === 0) {
+      // Check if we have alternative product data
+      if (!orderData.product_name && !orderData.order_text) {
+        errors.push('products array, product_name, or order_text is required');
       }
-      if (!product.quantity || product.quantity <= 0) {
-        errors.push(`Product ${index + 1}: quantity must be positive`);
-      }
+    }
+
+    // Validate products if provided
+    if (orderData.products && Array.isArray(orderData.products)) {
+      orderData.products.forEach((product, index) => {
+        if (!product.id) {
+          errors.push(`Product ${index + 1}: id is required`);
+        }
+        if (!product.quantity || product.quantity <= 0) {
+          errors.push(`Product ${index + 1}: quantity must be positive`);
+        }
+      });
+    }
+
+    // Check for minimum order amount
+    const totalAmount = parseFloat(orderData.sum || orderData.totalAmount || 0);
+    if (totalAmount <= 0) {
+      errors.push('Order total amount must be greater than 0');
+    }
+
+    if (errors.length > 0) {
+      const errorMessage = `Telegram order validation failed: ${errors.join(', ')}`;
+      logger.error('Order validation failed', {
+        errors,
+        contact_id: orderData.contact_id
+      });
+      throw new Error(errorMessage);
+    }
+
+    logger.info('Telegram order data validation passed', {
+      contact_id: orderData.contact_id,
+      productCount: orderData.products?.length || 0,
+      totalAmount
     });
+
+    return true;
   }
-
-  // Check for minimum order amount
-  const totalAmount = parseFloat(orderData.sum || orderData.totalAmount || 0);
-  if (totalAmount <= 0) {
-    errors.push('Order total amount must be greater than 0');
-  }
-
-  if (errors.length > 0) {
-    const errorMessage = `Telegram order validation failed: ${errors.join(', ')}`;
-    logger.error('Order validation failed', { 
-      errors, 
-      contact_id: orderData.contact_id 
-    });
-    throw new Error(errorMessage);
-  }
-
-  logger.info('Telegram order data validation passed', {
-    contact_id: orderData.contact_id,
-    productCount: orderData.products?.length || 0,
-    totalAmount
-  });
-
-  return true;
-}
 
 }
