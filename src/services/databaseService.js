@@ -1,5 +1,6 @@
 // Database Service - Fixed version with proper type conversion
 import { PrismaClient } from '@prisma/client';
+import axios from 'axios';
 import logger from '../utils/logger.js';
 
 export class DatabaseService {
@@ -13,15 +14,25 @@ export class DatabaseService {
       }
     });
 
-    // For ecommerce DB, we'll use raw queries since we don't have the schema
-    // We'll create a separate client just for raw queries
-    this.ecommerceDb = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.ECOMMERCE_DATABASE_URL
-        }
-      }
+    // Ecommerce API configuration
+    this.ecommerceApiUrl = process.env.ECOMMERCE_API_URL || 'http://localhost:5000';
+    this.ecommerceApiToken = process.env.ECOMMERCE_API_TOKEN;
+
+    // Create axios instance with authentication
+    this.ecommerceClient = axios.create({
+      baseURL: this.ecommerceApiUrl,
+      headers: {
+        'X-Internal-API-Token': this.ecommerceApiToken,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
     });
+
+    logger.info('DatabaseService initialized', {
+      ecommerceApiUrl: this.ecommerceApiUrl,
+      hasApiToken: !!this.ecommerceApiToken
+    });
+
   }
 
   // === ECOMMERCE DATABASE OPERATIONS (Using raw SQL) ===
@@ -30,83 +41,88 @@ export class DatabaseService {
    * Get single product by ID from ecommerce database
    * FIXED: Properly convert productId to integer to avoid type mismatch
    */
-  async getEcommerceProduct(productId) {
+  async getEcommerceProduct(productId, language = 'uk') {
     try {
-      // Convert productId to integer to avoid type mismatch
       const id = parseInt(productId);
 
       if (isNaN(id)) {
         throw new Error(`Invalid product ID: ${productId}. Must be a number.`);
       }
 
-      const products = await this.ecommerceDb.$queryRaw`
-        SELECT 
-          id,
-          name,
-          description,
-          price,
-          images,
-          stock,
-          "createdAt",
-          "updatedAt",
-          "categoryId"
-        FROM "Product" 
-        WHERE id = ${id}
-      `;
-
-      if (!products || products.length === 0) {
-        throw new Error(`Product with ID ${productId} not found or not active`);
-      }
-
-      const foundProduct = products[0];
-
-      logger.info('Single ecommerce product retrieved', {
+      logger.info('Fetching product from Ecommerce API', {
         productId: id,
-        name: foundProduct.name,
-        price: foundProduct.price
+        language: language
       });
 
-      return foundProduct;
+      // Make API request with language parameter
+      const response = await this.ecommerceClient.get(`/api/products/${id}`, {
+        params: { lang: language }
+      });
+
+      const product = response.data;
+
+      logger.info('Product retrieved from Ecommerce API', {
+        productId: id,
+        name: product.name,
+        language: language,
+        price: product.price
+      });
+
+      return product;
+
     } catch (error) {
-      logger.error('Failed to get single ecommerce product', {
+      if (error.response?.status === 404) {
+        logger.warn('Product not found in Ecommerce API', {
+          productId,
+          language
+        });
+        throw new Error(`Product with ID ${productId} not found`);
+      }
+
+      logger.error('Failed to get product from Ecommerce API', {
         error: error.message,
         productId,
-        convertedId: parseInt(productId)
+        language,
+        status: error.response?.status
       });
       throw error;
     }
   }
 
-  async getAllEcommerceProducts() {
+  async getAllEcommerceProducts(language = 'uk') {
     try {
-      // Use raw query to get all products from ecommerce DB
-      const products = await this.ecommerceDb.$queryRaw`
-        SELECT 
-          id,
-          name,
-          description,
-          price,
-          images,
-          "createdAt",
-          "updatedAt"
-        FROM "Product" 
-        ORDER BY id ASC
-      `;
+      logger.info('Fetching all products from Ecommerce API', {
+        language: language
+      });
 
-      logger.info('All ecommerce products retrieved', { count: products.length });
+      const response = await this.ecommerceClient.get('/api/products', {
+        params: { lang: language }
+      });
+
+      const products = response.data;
+
+      logger.info('All products retrieved from Ecommerce API', {
+        count: products.length,
+        language: language
+      });
+
       return products;
+
     } catch (error) {
-      logger.error('Failed to get all ecommerce products', {
-        error: error.message
+      logger.error('Failed to get all products from Ecommerce API', {
+        error: error.message,
+        language
       });
       throw error;
     }
   }
 
   // Get ecommerce products by IDs
-  async getEcommerceProductsByIds(productIds) {
+  async getEcommerceProductsByIds(productIds, language = 'uk') {
     try {
-      if (productIds.length === 0) return [];
+      if (!Array.isArray(productIds) || productIds.length === 0) {
+        return [];
+      }
 
       // Convert all IDs to integers
       const convertedIds = productIds.map(id => {
@@ -117,33 +133,30 @@ export class DatabaseService {
         return convertedId;
       });
 
-      // Create placeholders for IN clause
-      const placeholders = convertedIds.map(() => '?').join(',');
+      logger.info('Fetching products by IDs from Ecommerce API', {
+        productIds: convertedIds,
+        language: language
+      });
 
-      const products = await this.ecommerceDb.$queryRawUnsafe(`
-        SELECT 
-          id,
-          name,
-          description,
-          price,
-          images,
-          "createdAt",
-          "updatedAt"
-        FROM "Product" 
-        WHERE id IN (${placeholders})
-        ORDER BY id ASC
-      `, ...convertedIds);
+      // Fetch products individually
+      const productPromises = convertedIds.map(id =>
+        this.getEcommerceProduct(id, language)
+      );
 
-      logger.info('Ecommerce products by IDs retrieved', {
-        requestedCount: productIds.length,
-        foundCount: products.length
+      const products = await Promise.all(productPromises);
+
+      logger.info('Products by IDs retrieved from Ecommerce API', {
+        count: products.length,
+        language: language
       });
 
       return products;
+
     } catch (error) {
-      logger.error('Failed to get ecommerce products by IDs', {
+      logger.error('Failed to get products by IDs from Ecommerce API', {
         error: error.message,
-        productIds
+        productIds,
+        language
       });
       throw error;
     }
@@ -350,7 +363,7 @@ export class DatabaseService {
   async healthCheck() {
     const results = {
       crm: { status: 'unknown' },
-      ecommerce: { status: 'unknown' }
+      ecommerceApi: { status: 'unknown' }  // ← новое название
     };
 
     try {
@@ -360,53 +373,31 @@ export class DatabaseService {
       results.crm = { status: 'disconnected', error: error.message };
     }
 
+    // Check Ecommerce API instead of DB
     try {
-      await this.ecommerceDb.$queryRaw`SELECT 1`;
-      results.ecommerce = { status: 'connected' };
+      await this.ecommerceClient.get('/api/products', {
+        params: { limit: 1 }
+      });
+      results.ecommerceApi = {
+        status: 'connected',
+        url: this.ecommerceApiUrl
+      };
     } catch (error) {
-      results.ecommerce = { status: 'disconnected', error: error.message };
+      results.ecommerceApi = {
+        status: 'disconnected',
+        error: error.message,
+        url: this.ecommerceApiUrl
+      };
     }
 
-    logger.info('Database health check completed', results);
+    logger.info('Health check completed', results);
     return results;
   }
 
-  // Test ecommerce database structure
-  async testEcommerceSchema() {
-    try {
-      // Try to get table information
-      const tables = await this.ecommerceDb.$queryRaw`
-        SELECT table_name 
-        FROM information_schema.tables 
-        WHERE table_schema = 'public' 
-        AND table_type = 'BASE TABLE'
-        ORDER BY table_name
-      `;
-
-      logger.info('Ecommerce database tables', { tables });
-
-      // Try to get Product table columns
-      const productColumns = await this.ecommerceDb.$queryRaw`
-        SELECT column_name, data_type, is_nullable
-        FROM information_schema.columns 
-        WHERE table_name = 'Product' 
-        AND table_schema = 'public'
-        ORDER BY ordinal_position
-      `;
-
-      logger.info('Product table columns', { productColumns });
-
-      return { tables, productColumns };
-    } catch (error) {
-      logger.error('Failed to test ecommerce schema', { error: error.message });
-      throw error;
-    }
-  }
 
   async disconnect() {
     try {
       await this.crmDb.$disconnect();
-      await this.ecommerceDb.$disconnect();
       logger.info('Database connections closed');
     } catch (error) {
       logger.error('Error closing database connections', {
@@ -520,45 +511,45 @@ export class DatabaseService {
   }
 
   async updateCartItem(itemId, newQuantity) {
-  try {
-    // Get the item first to calculate new total
-    const item = await this.crmDb.botCartItem.findUnique({
-      where: { id: parseInt(itemId) }
-    });
+    try {
+      // Get the item first to calculate new total
+      const item = await this.crmDb.botCartItem.findUnique({
+        where: { id: parseInt(itemId) }
+      });
 
-    if (!item) {
-      throw new Error('Cart item not found');
-    }
-
-    // Calculate new total
-    const newTotal = parseInt(newQuantity) * parseFloat(item.price);
-
-    // Update the item
-    const updatedItem = await this.crmDb.botCartItem.update({
-      where: { id: parseInt(itemId) },
-      data: {
-        quantity: parseInt(newQuantity),
-        total: newTotal
+      if (!item) {
+        throw new Error('Cart item not found');
       }
-    });
 
-    logger.info('Cart item updated', { 
-      itemId, 
-      oldQuantity: item.quantity, 
-      newQuantity: parseInt(newQuantity),
-      newTotal 
-    });
+      // Calculate new total
+      const newTotal = parseInt(newQuantity) * parseFloat(item.price);
 
-    return updatedItem;
-  } catch (error) {
-    logger.error('Failed to update cart item', {
-      error: error.message,
-      itemId,
-      newQuantity
-    });
-    throw error;
+      // Update the item
+      const updatedItem = await this.crmDb.botCartItem.update({
+        where: { id: parseInt(itemId) },
+        data: {
+          quantity: parseInt(newQuantity),
+          total: newTotal
+        }
+      });
+
+      logger.info('Cart item updated', {
+        itemId,
+        oldQuantity: item.quantity,
+        newQuantity: parseInt(newQuantity),
+        newTotal
+      });
+
+      return updatedItem;
+    } catch (error) {
+      logger.error('Failed to update cart item', {
+        error: error.message,
+        itemId,
+        newQuantity
+      });
+      throw error;
+    }
   }
-}
 
 }
 
