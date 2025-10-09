@@ -18,10 +18,10 @@ router.get('/telegram-health', async (req, res) => {
       service: 'Telegram Bot Service'
     });
   } catch (error) {
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       status: 'UNHEALTHY',
-      error: error.message 
+      error: error.message
     });
   }
 });
@@ -78,7 +78,7 @@ router.post('/telegram-order', async (req, res) => {
       });
     }
 
-    
+
 
     // FIXED: Convert product IDs to integers and validate
     const processedProducts = products.map(product => {
@@ -131,6 +131,7 @@ router.post('/telegram-order', async (req, res) => {
       botOrderId: req.body.botOrderId || `tg_${Date.now()}`,
       contact_id: contact_id,
       telegram_id: req.body.telegram_id || req.body.chatId,
+      language: req.body.language || 'uk',
       customerInfo: {
         firstName: req.body.customerInfo?.firstName || 'TelegramUser',
         lastName: req.body.customerInfo?.lastName || req.body.customerInfo?.username || 'Unknown',
@@ -148,12 +149,16 @@ router.post('/telegram-order', async (req, res) => {
       paymentMethod: req.body.paymentMethod || 'CASH',
       notes: req.body.notes || `Telegram order from ${req.body.customerInfo?.username || req.body.telegram_id}`,
       // Pass through all the orderAttributes from SendPulse bot variables
-      orderAttributes: req.body.orderAttributes || {}
+      orderAttributes: {
+        ...req.body.orderAttributes,
+        language: req.body.language || 'uk'
+      }
     };
 
     logger.info('Telegram order creation request', {
       contact_id: processedOrder.contact_id,
       telegram_id: processedOrder.telegram_id,
+      language: processedOrder.language,
       productCount: processedOrder.products.length,
       customerName: `${processedOrder.customerInfo.firstName} ${processedOrder.customerInfo.lastName}`,
       productIds: processedOrder.products.map(p => p.id),
@@ -476,6 +481,7 @@ router.post('/cart-checkout', async (req, res) => {
       botOrderId: `cart_${Date.now()}`,
       contact_id,
       telegram_id: telegram_id || chatId,
+      language: req.body.language || 'uk',
       customerInfo: customerInfo || {},
       products,
       deliveryInfo: deliveryInfo || {},
@@ -483,6 +489,7 @@ router.post('/cart-checkout', async (req, res) => {
       notes: notes || `Cart checkout - ${cart.totalItems} items`,
       orderAttributes: {
         ...orderAttributes,
+        language: req.body.language || 'uk',
         cart_items: cart.totalItems,
         cart_total: cart.totalAmount,
         cart_weight: cart.totalWeight,
@@ -574,7 +581,7 @@ router.put('/cart-item/:itemId', async (req, res) => {
     });
 
     const statusCode = error.message === 'Cart item not found' ? 404 : 500;
-    
+
     res.status(statusCode).json({
       success: false,
       error: error.message
