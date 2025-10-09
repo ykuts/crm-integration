@@ -384,30 +384,18 @@ router.post('/cart-add', async (req, res) => {
 router.get('/cart/:contact_id', async (req, res) => {
   try {
     const { contact_id } = req.params;
-    const language = req.query.language || req.query.lang || 'uk'; // Get language from query
+    const language = req.query.language || req.query.lang || 'uk';
 
     logger.info('Getting cart contents', { contact_id, language });
 
     const cart = await botController.dbService.getCart(contact_id);
 
-    // Translations for cart display
+    // Translations for cart UI
     const translations = {
-      uk: {
-        emptyCart: 'Кошик порожній',
-        total: 'Всього'
-      },
-      en: {
-        emptyCart: 'Cart is empty',
-        total: 'Total'
-      },
-      fr: {
-        emptyCart: 'Panier vide',
-        total: 'Total'
-      },
-      ru: {
-        emptyCart: 'Корзина пуста',
-        total: 'Всего'
-      }
+      uk: { emptyCart: 'Кошик порожній', total: 'Всього' },
+      en: { emptyCart: 'Cart is empty', total: 'Total' },
+      fr: { emptyCart: 'Panier vide', total: 'Total' },
+      ru: { emptyCart: 'Корзина пуста', total: 'Всего' }
     };
 
     const t = translations[language] || translations.uk;
@@ -417,8 +405,9 @@ router.get('/cart/:contact_id', async (req, res) => {
     if (cart.isEmpty) {
       cartDisplay = t.emptyCart;
     } else {
+      // Option 1: Use stored productName (already translated when added)
       cartDisplay = cart.items.map(item => {
-        // Special handling for weight-based products (творог)
+        // Special handling for weight-based products
         if (parseInt(item.productId) === 3 || parseInt(item.productId) === 6 || parseInt(item.productId) === 25) {
           const weightInKg = item.quantity / 2;
           return `${item.productName} ${weightInKg} кг = ${parseFloat(item.total).toFixed(2)} CHF`;
@@ -426,6 +415,7 @@ router.get('/cart/:contact_id', async (req, res) => {
           return `${item.productName} x ${item.quantity} = ${parseFloat(item.total).toFixed(2)} CHF`;
         }
       }).join('\n');
+      
       cartDisplay += `\n\n${t.total}: ${cart.totalAmount.toFixed(2)} CHF`;
     }
 
