@@ -863,10 +863,10 @@ export class EnhancedCrmService extends SendPulseCRMService {
       );
 
       // Step 3: Create deal with attributes
+      const dealTitle = this.generateDealTitle(enrichedProducts, telegramOrderData);
+
       const deal = await this.createDealWithAttributes({
-        title: telegramOrderData.orderAttributes?.order_text ||
-          telegramOrderData.order_text ||
-          `Telegram Order - ${enrichedProducts.map(p => p.name).join(', ')}`,
+        title: dealTitle,
         price: parseFloat(telegramOrderData.orderAttributes?.sum || telegramOrderData.sum || totalAmount),
         currency: 'CHF',
         contact: contact,
@@ -964,6 +964,33 @@ export class EnhancedCrmService extends SendPulseCRMService {
     }
 
     return sanitized;
+  }
+
+  /**
+ * Generate a concise deal title that fits CRM limits (max 255 characters)
+ * @param {Array} products - Array of enriched products
+ * @param {Object} telegramOrderData - Original telegram order data
+ * @returns {string} Deal title
+ */
+  generateDealTitle(products, telegramOrderData) {
+    const MAX_TITLE_LENGTH = 255;
+
+    // Create summary like "Telegram Order - 12 items, 1705 CHF"
+    const productCount = products.length;
+    const totalAmount = products.reduce((sum, p) => sum + (p.totalPrice || 0), 0);
+
+    const customerName = telegramOrderData.orderAttributes?.fullname ||
+      telegramOrderData.customerInfo?.firstName ||
+      'Customer';
+
+    const title = `Telegram Order - ${customerName} - ${productCount} позицій, ${totalAmount.toFixed(2)} CHF`;
+
+    // Ensure title doesn't exceed max length
+    if (title.length > MAX_TITLE_LENGTH) {
+      return title.substring(0, MAX_TITLE_LENGTH - 3) + '...';
+    }
+
+    return title;
   }
 
   /**
