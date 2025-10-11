@@ -411,10 +411,8 @@ router.get('/cart/:contact_id', async (req, res) => {
         if (parseInt(item.productId) === 3 || parseInt(item.productId) === 6 || parseInt(item.productId) === 25) {
           const weightInKg = item.quantity / 2;
           return `${item.productName} ${weightInKg} кг = ${parseFloat(item.total).toFixed(2)} CHF`;
-        } else if (parseInt(item.productId) === 4 || parseInt(item.productId) === 11 || parseInt(item.productId) === 12) {
-          return `${item.productName} x ${item.quantity} = ${parseFloat(item.total).toFixed(2)} CHF`;
         } else {
-          return `${item.productName} x ${weightInKg} кг = ${parseFloat(item.total).toFixed(2)} CHF`;
+          return `${item.productName} x ${item.quantity} = ${parseFloat(item.total).toFixed(2)} CHF`;
         }
       }).join('\n');
       
