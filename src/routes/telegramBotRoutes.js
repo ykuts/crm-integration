@@ -405,14 +405,28 @@ router.get('/cart/:contact_id', async (req, res) => {
     if (cart.isEmpty) {
       cartDisplay = t.emptyCart;
     } else {
-      // Option 1: Use stored productName (already translated when added)
       cartDisplay = cart.items.map(item => {
-        // Special handling for weight-based products
-        if (parseInt(item.productId) === 3 || parseInt(item.productId) === 6 || parseInt(item.productId) === 25) {
+        const productId = parseInt(item.productId);
+        const itemName = item.productName;
+        const itemTotal = parseFloat(item.total).toFixed(2);
+        
+        // Category 1: Products sold by piece (qty only, no units)
+        // Products: 4, 11, 12
+        if ([4, 11, 12].includes(productId)) {
+          return `${itemName} x ${item.quantity} = ${itemTotal} CHF`;
+        }
+        
+        // Category 2: Weight-based products (qty / 2 = kg)
+        // Products: 3, 6, 25
+        else if ([3, 6, 25].includes(productId)) {
           const weightInKg = item.quantity / 2;
-          return `${item.productName} ${weightInKg} кг = ${parseFloat(item.total).toFixed(2)} CHF`;
-        } else {
-          return `${item.productName} x ${item.quantity} = ${parseFloat(item.total).toFixed(2)} CHF`;
+          return `${itemName} ${weightInKg} кг = ${itemTotal} CHF`;
+        }
+        
+        // Category 3: All other products (qty in kg)
+        // All remaining products
+        else {
+          return `${itemName} x ${item.quantity} кг = ${itemTotal} CHF`;
         }
       }).join('\n');
       
@@ -431,7 +445,8 @@ router.get('/cart/:contact_id', async (req, res) => {
   } catch (error) {
     logger.error('Failed to get cart', {
       error: error.message,
-      contact_id: req.params.contact_id
+      contact_id: req.params.contact_id,
+      stack: error.stack
     });
 
     res.status(500).json({
