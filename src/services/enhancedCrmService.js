@@ -857,6 +857,11 @@ export class EnhancedCrmService extends SendPulseCRMService {
 
       const totalAmount = enrichedProducts.reduce((sum, p) => sum + p.totalPrice, 0);
 
+      // FIX: Sanitize orderAttributes to prevent CRM validation errors
+      const sanitizedOrderAttributes = this.sanitizeOrderAttributes(
+        telegramOrderData.orderAttributes || {}
+      );
+
       // Step 3: Create deal with attributes
       const deal = await this.createDealWithAttributes({
         title: telegramOrderData.orderAttributes?.order_text ||
@@ -872,7 +877,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
           canton: telegramOrderData.canton || telegramOrderData.deliveryInfo?.canton
         },
         source: 'telegram',
-        orderAttributes: telegramOrderData.orderAttributes || {}
+        orderAttributes: sanitizedOrderAttributes
       });
 
       // Step 4: Add products to deal (with error handling)
@@ -918,6 +923,47 @@ export class EnhancedCrmService extends SendPulseCRMService {
       });
       throw error;
     }
+  }
+
+  /**
+ * Sanitize order attributes to prevent CRM validation errors
+ * Replaces long product lists with concise summaries
+ */
+  sanitizeOrderAttributes(orderAttributes) {
+    const sanitized = { ...orderAttributes };
+
+    // Replace long cart_products list with a concise summary
+    if (sanitized.cart_products && typeof sanitized.cart_products === 'string') {
+      const productCount = (sanitized.cart_products.match(/x\d+/g) || []).length;
+      const totalItems = sanitized.cart_items || 0;
+
+      // Create a short, informative summary instead of the full list
+      sanitized.cart_products = `${productCount} позицій на суму ${sanitized.cart_total || 0} CHF`;
+
+      logger.debug('Replaced cart_products with summary', {
+        productCount,
+        totalItems,
+        totalAmount: sanitized.cart_total
+      });
+    }
+
+    // Ensure numeric fields are properly formatted
+    if (sanitized.cart_items) {
+      sanitized.cart_items = parseInt(sanitized.cart_items) || 0;
+    }
+    if (sanitized.cart_total) {
+      sanitized.cart_total = parseFloat(sanitized.cart_total) || 0;
+    }
+    if (sanitized.cart_weight) {
+      sanitized.cart_weight = parseFloat(sanitized.cart_weight) || 0;
+    }
+
+    // Truncate fullname if it's too long (just in case)
+    if (sanitized.fullname && sanitized.fullname.length > 100) {
+      sanitized.fullname = sanitized.fullname.substring(0, 97) + '...';
+    }
+
+    return sanitized;
   }
 
   /**
