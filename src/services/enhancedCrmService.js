@@ -167,7 +167,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
 
       const orderPayload = {
         // Order source and identification
-        orderSource: 'TELEGRAM_BOT',
+        orderSource: telegramOrderData.source || 'TELEGRAM_BOT',
         externalOrderId: botOrderId,
         syncStatus: 'PENDING',
 
@@ -204,7 +204,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
         notesClient: telegramOrderData.question ||
           telegramOrderData.notes ||
           telegramOrderData.orderAttributes?.cart_products || '',
-        notesAdmin: `Надійшло з Telegram bot. ${!isStationFound ?
+        notesAdmin: `Надійшло з ${telegramOrderData.source || 'Telegram'} bot. ${!isStationFound ?
           `Станцію "${requestedStation}" не знайдено, переключено на самовивіз у Ньоні. ` : ''}` +
           `Кошик: ${telegramOrderData.orderAttributes?.cart_products || ''}`,
 
@@ -293,7 +293,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
   async mapTelegramItemsToEcommerceFormat(telegramOrderData) {
     const items = [];
 
-    logger.info('Mapping telegram items to ecommerce format', {
+    logger.info('Mapping bot items to ecommerce format', {
       hasProducts: !!telegramOrderData.products,
       hasCartData: !!telegramOrderData.orderAttributes?.cart_products,
       cartTotal: telegramOrderData.orderAttributes?.cart_total
@@ -635,7 +635,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
     try {
       const botOrderData = {
         botOrderId,
-        source: 'telegram',
+        source: telegramOrderData.source || 'TELEGRAM_BOT',
         chatId: telegramOrderData.contact_id || telegramOrderData.chatId,
         customerPhone: telegramOrderData.phone || telegramOrderData.customer?.phone || '',
         customerName: telegramOrderData.fullname || `${telegramOrderData.customer?.firstName || ''} ${telegramOrderData.customer?.lastName || ''}`.trim(),
@@ -665,7 +665,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
         })
       };
 
-      await this.dbService.createBotOrder(botOrderData);
+      //await this.dbService.createBotOrder(botOrderData);
 
       logger.info('Bot order mapping stored successfully', {
         botOrderId,
@@ -978,12 +978,13 @@ export class EnhancedCrmService extends SendPulseCRMService {
     // Create summary like "Telegram Order - 12 items, 1705 CHF"
     const productCount = products.length;
     const totalAmount = products.reduce((sum, p) => sum + (p.totalPrice || 0), 0);
+    const orderSource = telegramOrderData.source || 'Telegram';
 
     const customerName = telegramOrderData.orderAttributes?.fullname ||
       telegramOrderData.customerInfo?.firstName ||
       'Customer';
 
-    const title = `Telegram Order - ${customerName} - ${productCount} позицій, ${totalAmount.toFixed(2)} CHF`;
+    const title = `${orderSource} bot - ${customerName} - ${productCount} позицій, ${totalAmount.toFixed(2)} CHF`;
 
     // Ensure title doesn't exceed max length
     if (title.length > MAX_TITLE_LENGTH) {
