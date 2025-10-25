@@ -444,38 +444,48 @@ export class SendPulseCRMService {
 
       // Map ecommerce status to SendPulse step IDs
       const statusToStepMapping = {
-        'PENDING': parseInt(process.env.SENDPULSE_STEP_PENDING) || 529997,      // Нове
-        'CONFIRMED': parseInt(process.env.SENDPULSE_STEP_CONFIRMED) || 529998,  // Підтверджено
-        'DELIVERED': parseInt(process.env.SENDPULSE_STEP_DELIVERED) || 530000,  // Доставлено
-        'CANCELLED': parseInt(process.env.SENDPULSE_STEP_CANCELLED) || 530001   // Відмінено
+        'PENDING': parseInt(process.env.SENDPULSE_STEP_PENDING) || 529997,
+        'CONFIRMED': parseInt(process.env.SENDPULSE_STEP_CONFIRMED) || 529998,
+        'DELIVERED': parseInt(process.env.SENDPULSE_STEP_DELIVERED) || 530000,
+        'CANCELLED': parseInt(process.env.SENDPULSE_STEP_CANCELLED) || 530001
       };
 
-      // Get the pipeline ID from environment
       const pipelineId = parseInt(process.env.SENDPULSE_PIPELINE_ID) || 153270;
 
       // First, get current deal details to preserve existing data
       const currentDeal = await this.getDealDetails(dealId);
+      const dealData = currentDeal.data || currentDeal;
 
-      // Build update payload
+      // Determine step ID
+      let stepId = dealData.stepId; // Keep current step by default
+      if (updateData.status && statusToStepMapping[updateData.status]) {
+        stepId = statusToStepMapping[updateData.status];
+        logger.info('Mapping status to step', {
+          status: updateData.status,
+          stepId: stepId
+        });
+      }
+
+      // Build update payload with ALL required fields
       const updatePayload = {
         pipelineId: pipelineId,
-        name: currentDeal.data?.name || `Order #${dealId}`, // Preserve existing name
-        price: updateData.totalAmount ? parseFloat(updateData.totalAmount) : currentDeal.data?.price || 0,
+        stepId: stepId, // Required field
+        status: dealData.status || 0, // Required field
+        name: dealData.name || `Order #${dealId}`, // Preserve existing name
+        price: updateData.totalAmount ? parseFloat(updateData.totalAmount) : (dealData.price || 0),
         currency: 'CHF'
       };
 
-      // Add step ID if status is being updated
-      if (updateData.status && statusToStepMapping[updateData.status]) {
-        updatePayload.stepId = statusToStepMapping[updateData.status];
-        logger.info('Mapping status to step', {
-          status: updateData.status,
-          stepId: updatePayload.stepId
-        });
+      // Add optional fields if they exist
+      if (dealData.responsibleId) {
+        updatePayload.responsibleId = dealData.responsibleId;
+      }
+      if (dealData.sourceId) {
+        updatePayload.sourceId = dealData.sourceId;
       }
 
       // Add notes as comment (if provided)
       if (updateData.notes) {
-        // First update the deal, then add comment separately
         await this.addCommentToDeal(dealId, updateData.notes);
       }
 
@@ -484,7 +494,8 @@ export class SendPulseCRMService {
         updatePayload
       });
 
-      const response = await this.client.patch(`/deals/${dealId}`, updatePayload);
+      // SendPulse requires PUT, not PATCH
+      const response = await this.client.put(`/deals/${dealId}`, updatePayload);
 
       logger.info('Deal updated successfully', { dealId });
       return response.data;
