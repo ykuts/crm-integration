@@ -70,7 +70,6 @@ class SyncController {
       logger.info('Deal status updated successfully', {
         dealId,
         orderId,
-        sendPulseStatus,
         newStatus
       });
 
@@ -82,7 +81,6 @@ class SyncController {
           orderId,
           oldStatus: previousStatus,
           newStatus,
-          sendPulseStatus,
           updatedAt: new Date().toISOString()
         }
       });
