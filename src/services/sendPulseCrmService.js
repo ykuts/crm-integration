@@ -80,7 +80,8 @@ export class SendPulseCRMService {
 
   // Authentication with SendPulse
   async ensureValidToken() {
-    if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
+    // Check if current token is still valid
+    if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
       return; // Token is still valid
     }
 
@@ -93,12 +94,21 @@ export class SendPulseCRMService {
         client_secret: this.clientSecret
       });
 
+      if (!authResponse.data || !authResponse.data.access_token) {
+        throw new Error('No access token received from SendPulse');
+      }
+
       this.accessToken = authResponse.data.access_token;
-      // SendPulse tokens usually expire in 1 hour
-      this.tokenExpiry = new Date(Date.now() + (authResponse.data.expires_in - 60) * 1000);
+
+      // Parse expires_in safely - default to 1 hour if not provided
+      const expiresIn = parseInt(authResponse.data.expires_in) || 3600;
+
+      // Set expiry time with 60 second buffer
+      this.tokenExpiry = Date.now() + ((expiresIn - 60) * 1000);
 
       logger.info('SendPulse token obtained successfully', {
-        expiresAt: this.tokenExpiry.toISOString()
+        expiresIn: expiresIn,
+        expiresAt: new Date(this.tokenExpiry).toISOString()
       });
 
     } catch (error) {
