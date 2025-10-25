@@ -39,19 +39,9 @@ class SyncController {
         });
       }
 
-      // Map ecommerce order status to SendPulse deal status
-      const sendPulseStatus = this.mapOrderStatusToSendPulse(newStatus);
-      
-      if (!sendPulseStatus) {
-        return res.status(400).json({
-          success: false,
-          error: `Unknown order status: ${newStatus}`
-        });
-      }
-
       // Prepare update data for SendPulse
       const updateData = {
-        status: sendPulseStatus,
+        status: newStatus,
         // Add comment about the status change
         notes: `Order status updated from ${previousStatus || 'unknown'} to ${newStatus} at ${new Date().toISOString()}`
       };
