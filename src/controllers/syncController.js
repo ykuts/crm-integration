@@ -1,11 +1,11 @@
 // src/controllers/syncController.js
 import logger from '../utils/logger.js';
-import { createSendPulseCrmService } from '../services/sendPulseCrmService.js';
+import { SendPulseCRMService  } from '../services/sendPulseCrmService.js';
 import axios from 'axios';
 
 class SyncController {
   constructor() {
-    this.crmService = createSendPulseCrmService();
+    this.crmService = new SendPulseCRMService();
     this.ecommerceApiUrl = process.env.ECOMMERCE_API_URL || 'http://localhost:5000';
     this.ecommerceApiToken = process.env.ECOMMERCE_API_TOKEN;
   }
