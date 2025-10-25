@@ -71,7 +71,18 @@ app.get('/health', (req, res) => {
     status: 'OK',
     service: 'CRM Integration Service',
     timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0'
+    version: process.env.npm_package_version || '1.0.0',
+    environment: process.env.NODE_ENV,
+    // DEBUG INFO
+    sendpulse: {
+      hasClientId: !!process.env.SENDPULSE_CLIENT_ID,
+      hasClientSecret: !!process.env.SENDPULSE_CLIENT_SECRET,
+      clientIdLength: process.env.SENDPULSE_CLIENT_ID?.length || 0,
+      clientSecretLength: process.env.SENDPULSE_CLIENT_SECRET?.length || 0,
+      clientIdPreview: process.env.SENDPULSE_CLIENT_ID?.substring(0, 8) + '...' || 'NOT_SET',
+      clientIdFull: process.env.SENDPULSE_CLIENT_ID, // Временно покажем полностью
+      clientSecretFull: process.env.SENDPULSE_CLIENT_SECRET // Временно покажем полностью
+    }
   });
 });
 
@@ -104,26 +115,6 @@ app.get('/', (req, res) => {
     documentation: {
       authentication: 'Use X-Api-Key header with CRM_API_KEY or X-Internal-API-Token for sync endpoints'
     }
-  });
-});
-
-// Temporary debug endpoint - NO AUTH
-app.get('/debug-config', (req, res) => {
-  const clientId = process.env.SENDPULSE_CLIENT_ID;
-  const clientSecret = process.env.SENDPULSE_CLIENT_SECRET;
-  
-  res.json({
-    timestamp: new Date().toISOString(),
-    hasClientId: !!clientId,
-    hasClientSecret: !!clientSecret,
-    clientIdLength: clientId?.length || 0,
-    clientSecretLength: clientSecret?.length || 0,
-    clientIdValue: clientId, // Покажем полностью для проверки
-    clientSecretValue: clientSecret, // Покажем полностью для проверки
-    clientIdFirstLast: clientId ? `${clientId[0]}...${clientId[clientId.length - 1]}` : 'NONE',
-    hasQuotes: clientId?.startsWith('"') || clientId?.endsWith('"'),
-    nodeEnv: process.env.NODE_ENV,
-    port: process.env.PORT
   });
 });
 
