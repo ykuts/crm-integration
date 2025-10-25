@@ -45,10 +45,12 @@ export const authMiddleware = (req, res, next) => {
  * Validate API Key
  */
 const validateApiKey = (apiKey, req, res, next) => {
-  const validApiKey = process.env.CRM_API_KEY;
+  const validApiKey = process.env.CRM_API_KEY || process.env.ECOMMERCE_API_TOKEN;
 
   if (!validApiKey) {
-    logger.error('CRM_API_KEY not configured in environment');
+    logger.error('API key not configured in environment', {
+      checkedVars: ['CRM_API_KEY', 'ECOMMERCE_API_TOKEN']
+    });
     return res.status(500).json({
       success: false,
       error: 'Server configuration error',
@@ -61,7 +63,8 @@ const validateApiKey = (apiKey, req, res, next) => {
       ip: req.ip,
       userAgent: req.get('User-Agent'),
       path: req.path,
-      providedKey: apiKey.substring(0, 8) + '...'
+      providedKey: apiKey.substring(0, 8) + '...',
+      expectedKey: validApiKey.substring(0, 8) + '...'
     });
 
     return res.status(401).json({
@@ -75,12 +78,13 @@ const validateApiKey = (apiKey, req, res, next) => {
   req.user = {
     type: 'api_key',
     authenticated: true,
-    permissions: ['bot_operations']
+    permissions: ['bot_operations', 'sync_operations', 'internal_service']
   };
 
   logger.info('API key authentication successful', {
     ip: req.ip,
-    path: req.path
+    path: req.path,
+    source: 'internal_service'
   });
 
   next();
