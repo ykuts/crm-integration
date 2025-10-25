@@ -79,25 +79,7 @@ app.get('/health', (req, res) => {
 app.use('/api/bot', telegramBotRoutes);
 app.use('/api/sync', authMiddleware, syncRoutes);
 
-// Temporary debug endpoint - NO AUTH
-app.get('/debug-config', (req, res) => {
-  const clientId = process.env.SENDPULSE_CLIENT_ID;
-  const clientSecret = process.env.SENDPULSE_CLIENT_SECRET;
-  
-  res.json({
-    timestamp: new Date().toISOString(),
-    hasClientId: !!clientId,
-    hasClientSecret: !!clientSecret,
-    clientIdLength: clientId?.length || 0,
-    clientSecretLength: clientSecret?.length || 0,
-    clientIdValue: clientId, // Покажем полностью для проверки
-    clientSecretValue: clientSecret, // Покажем полностью для проверки
-    clientIdFirstLast: clientId ? `${clientId[0]}...${clientId[clientId.length - 1]}` : 'NONE',
-    hasQuotes: clientId?.startsWith('"') || clientId?.endsWith('"'),
-    nodeEnv: process.env.NODE_ENV,
-    port: process.env.PORT
-  });
-});
+
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -122,6 +104,26 @@ app.get('/', (req, res) => {
     documentation: {
       authentication: 'Use X-Api-Key header with CRM_API_KEY or X-Internal-API-Token for sync endpoints'
     }
+  });
+});
+
+// Temporary debug endpoint - NO AUTH
+app.get('/debug-config', (req, res) => {
+  const clientId = process.env.SENDPULSE_CLIENT_ID;
+  const clientSecret = process.env.SENDPULSE_CLIENT_SECRET;
+  
+  res.json({
+    timestamp: new Date().toISOString(),
+    hasClientId: !!clientId,
+    hasClientSecret: !!clientSecret,
+    clientIdLength: clientId?.length || 0,
+    clientSecretLength: clientSecret?.length || 0,
+    clientIdValue: clientId, // Покажем полностью для проверки
+    clientSecretValue: clientSecret, // Покажем полностью для проверки
+    clientIdFirstLast: clientId ? `${clientId[0]}...${clientId[clientId.length - 1]}` : 'NONE',
+    hasQuotes: clientId?.startsWith('"') || clientId?.endsWith('"'),
+    nodeEnv: process.env.NODE_ENV,
+    port: process.env.PORT
   });
 });
 
