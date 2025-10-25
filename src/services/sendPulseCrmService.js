@@ -82,19 +82,49 @@ export class SendPulseCRMService {
   async ensureValidToken() {
     // Check if current token is still valid
     if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+      logger.debug('Using cached SendPulse token');
       return; // Token is still valid
     }
 
     try {
       logger.info('Getting SendPulse access token...');
 
+      // Check if credentials are configured
+      if (!this.clientId || !this.clientSecret) {
+        logger.error('SendPulse credentials not configured', {
+          hasClientId: !!this.clientId,
+          hasClientSecret: !!this.clientSecret
+        });
+        throw new Error('SendPulse CLIENT_ID and CLIENT_SECRET must be configured');
+      }
+
+      logger.debug('Sending auth request to SendPulse', {
+        clientId: this.clientId.substring(0, 8) + '...',
+        hasSecret: !!this.clientSecret
+      });
+
       const authResponse = await axios.post('https://api.sendpulse.com/oauth/access_token', {
         grant_type: 'client_credentials',
         client_id: this.clientId,
         client_secret: this.clientSecret
+      }, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      logger.debug('SendPulse auth response received', {
+        status: authResponse.status,
+        hasData: !!authResponse.data,
+        hasAccessToken: !!authResponse.data?.access_token,
+        dataKeys: authResponse.data ? Object.keys(authResponse.data) : []
       });
 
       if (!authResponse.data || !authResponse.data.access_token) {
+        logger.error('Invalid SendPulse auth response', {
+          responseData: authResponse.data
+        });
         throw new Error('No access token received from SendPulse');
       }
 
@@ -108,13 +138,18 @@ export class SendPulseCRMService {
 
       logger.info('SendPulse token obtained successfully', {
         expiresIn: expiresIn,
-        expiresAt: new Date(this.tokenExpiry).toISOString()
+        expiresAt: new Date(this.tokenExpiry).toISOString(),
+        tokenPreview: this.accessToken.substring(0, 10) + '...'
       });
 
     } catch (error) {
       logger.error('Failed to get SendPulse access token', {
         error: error.message,
-        response: error.response?.data
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        responseData: error.response?.data,
+        hasClientId: !!this.clientId,
+        hasClientSecret: !!this.clientSecret
       });
       throw new Error(`SendPulse authentication failed: ${error.message}`);
     }
