@@ -490,6 +490,7 @@ export class SendPulseCRMService {
       // Map ecommerce status to SendPulse step IDs
       const statusToStepMapping = {
         'PENDING': parseInt(process.env.SENDPULSE_STEP_PENDING) || 529997,
+        'REQUIRES_AGREEMENT': parseInt(process.env.SENDPULSE_STEP_REQUIRES_AGREEMENT) || 530196,
         'CONFIRMED': parseInt(process.env.SENDPULSE_STEP_CONFIRMED) || 529998,
         'DELIVERED': parseInt(process.env.SENDPULSE_STEP_DELIVERED) || 530000,
         'CANCELLED': parseInt(process.env.SENDPULSE_STEP_CANCELLED) || 530001

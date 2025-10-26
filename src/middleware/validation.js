@@ -295,6 +295,7 @@ export const validateOrderUpdate = (req, res, next) => {
     status: Joi.string().valid(
       'PENDING', 
       'CONFIRMED', 
+      'REQUIRES_AGREEMENT',
       'PREPARING', 
       'READY', 
       'DELIVERED', 

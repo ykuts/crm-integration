@@ -245,6 +245,7 @@ class SyncController {
   mapOrderStatusToSendPulse(orderStatus) {
     const statusMapping = {
       'PENDING': 'new',
+      'REQUIRES_AGREEMENT': 'requires_agreement',
       'CONFIRMED': 'in_progress',
       'DELIVERED': 'won',
       'CANCELLED': 'lost'

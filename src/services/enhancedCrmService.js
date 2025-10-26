@@ -1161,7 +1161,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
         const statusMapping = {
           'PENDING': 529997,
           'CONFIRMED': 529998,
-          'SHIPPED': 529999,
+          'REQUIRED_AGREEMENT': 530196,
           'DELIVERED': 530000,
           'CANCELLED': 530001
         };
