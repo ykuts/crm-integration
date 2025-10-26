@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 // Import routes
 import telegramBotRoutes from './routes/telegramBotRoutes.js';
 import syncRoutes from './routes/syncRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -89,7 +90,7 @@ app.get('/health', (req, res) => {
 // Routes
 app.use('/api/bot', telegramBotRoutes);
 app.use('/api/sync', authMiddleware, syncRoutes);
-
+app.use('/api/webhook', webhookRoutes);
 
 
 // Root endpoint
