@@ -81,8 +81,8 @@ app.get('/health', (req, res) => {
       clientIdLength: process.env.SENDPULSE_CLIENT_ID?.length || 0,
       clientSecretLength: process.env.SENDPULSE_CLIENT_SECRET?.length || 0,
       clientIdPreview: process.env.SENDPULSE_CLIENT_ID?.substring(0, 8) + '...' || 'NOT_SET',
-      clientIdFull: process.env.SENDPULSE_CLIENT_ID, // Временно покажем полностью
-      clientSecretFull: process.env.SENDPULSE_CLIENT_SECRET // Временно покажем полностью
+      //clientIdFull: process.env.SENDPULSE_CLIENT_ID, // Временно покажем полностью
+      //clientSecretFull: process.env.SENDPULSE_CLIENT_SECRET // Временно покажем полностью
     }
   });
 });
