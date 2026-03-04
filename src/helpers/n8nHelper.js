@@ -36,7 +36,6 @@ export async function getProductMappings() {
   try {
     const mappings = await prisma.productMapping.findMany({
       where: {
-        syncStatus: 'ACTIVE',
         googleSheetsColumn: { not: null }
       },
       select: {
