@@ -60,6 +60,7 @@ model ProductMapping {
   ecommerceId  Int    @unique @map("ecommerce_id")
   sendpulseId  Int    @map("sendpulse_id")
   name         String
+  googleSheetsColumn String? @map("google_sheets_column")
   
   // Optional sync information
   lastSyncAt  DateTime? @map("last_sync_at")
@@ -68,6 +69,7 @@ model ProductMapping {
   @@map("product_mappings")
   @@index([ecommerceId])
   @@index([sendpulseId])
+  @@index([googleSheetsColumn])
 }
 
 // Customer Mapping Table - maps ecommerce customers to SendPulse contacts

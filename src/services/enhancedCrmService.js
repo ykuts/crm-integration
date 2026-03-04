@@ -2,6 +2,7 @@ import { SendPulseCRMService } from './sendPulseCrmService.js';
 import { DatabaseService } from './databaseService.js';
 import axios from 'axios';
 import logger from '../utils/logger.js';
+import { sendOrderToN8n } from '../helpers/n8nHelper.js';
 
 export class EnhancedCrmService extends SendPulseCRMService {
   constructor() {
@@ -71,6 +72,31 @@ export class EnhancedCrmService extends SendPulseCRMService {
             error: varError.message,
             botOrderId,
             contactId: telegramOrderData.contact_id || telegramOrderData.chatId
+          });
+        }
+      });
+      // ========================================
+
+      // ========================================
+      // ✨ NEW: Step 7: Send to Google Sheets via n8n
+      // ========================================
+      setImmediate(async () => {
+        try {
+          logger.info('Syncing to Google Sheets via n8n', {
+            botOrderId,
+            ecommerceOrderId: ecommerceOrder.id
+          });
+
+          await sendOrderToN8n(ecommerceOrder);
+
+          logger.info('✅ Synced to Google Sheets successfully', {
+            orderId: ecommerceOrder.id
+          });
+
+        } catch (n8nError) {
+          logger.warn('Google Sheets sync failed (non-critical)', {
+            error: n8nError.message,
+            orderId: ecommerceOrder.id
           });
         }
       });
