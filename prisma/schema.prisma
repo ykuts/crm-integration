@@ -1,6 +1,5 @@
-// Prisma Schema for CRM Integration Database
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
@@ -9,145 +8,106 @@ datasource db {
   url      = env("CRM_DATABASE_URL")
 }
 
-// Bot Orders Table - stores orders from chat bots
 model BotOrder {
-  id         Int      @id @default(autoincrement())
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-
-  // Bot order identification
-  botOrderId String @unique @map("bot_order_id")
-  source       String
-  chatId      String @map("chat_id")
-
-  // Customer information
-  customerPhone String @map("customer_phone")
-  customerName  String @map("customer_name")
-  customerEmail String? @map("customer_email")
-
-  // Order details
-  products      String // JSON string of products array
-  deliveryInfo  String @map("delivery_info") // JSON string of delivery information
-  paymentMethod String @map("payment_method")
-  totalAmount   Float @map("total_amount")
-
-  // Order status and tracking
-  status String @default("PENDING")
-  notes  String?
-
-  // SendPulse integration
-  sendpulseDealId   String?   @map("sendpulse_deal_id")
+  id                 Int      @id @default(autoincrement())
+  botOrderId         String   @unique @map("bot_order_id")
+  source             String
+  chatId             String   @map("chat_id")
+  sendpulseDealId    String?  @map("sendpulse_deal_id")
   sendpulseContactId String?  @map("sendpulse_contact_id")
+  customerPhone      String   @map("customer_phone")
+  customerName       String   @map("customer_name")
+  totalAmount        Float    @map("total_amount")
+  paymentMethod      String   @map("payment_method")
+  deliveryInfo       String   @map("delivery_info")
+  notes              String?
+  products           String
+  status             String   @default("PENDING")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  customerEmail      String?  @map("customer_email")
+  metadata           String   @default("{}")
 
-  // Additional metadata
-  metadata String @default("{}")
-
-  @@map("bot_orders")
   @@index([botOrderId])
   @@index([source])
   @@index([customerPhone])
   @@index([status])
   @@index([createdAt])
+  @@map("bot_orders")
 }
 
-// Product Mapping Table - maps ecommerce products to SendPulse products
 model ProductMapping {
-  id         Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id                 Int       @id @default(autoincrement())
+  ecommerceId        Int       @unique @map("ecommerce_id")
+  sendpulseId        Int       @map("sendpulse_id")
+  name               String
+  lastSyncAt         DateTime? @map("last_sync_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  syncStatus         String    @default("ACTIVE") @map("sync_status")
+  googleSheetsColumn String?   @map("google_sheets_column")
 
-  // Mapping information
-  ecommerceId  Int    @unique @map("ecommerce_id")
-  sendpulseId  Int    @map("sendpulse_id")
-  name         String
-  googleSheetsColumn String? @map("google_sheets_column")
-  
-  // Optional sync information
-  lastSyncAt  DateTime? @map("last_sync_at")
-  syncStatus  String @default("ACTIVE") @map("sync_status")
-
-  @@map("product_mappings")
   @@index([ecommerceId])
   @@index([sendpulseId])
   @@index([googleSheetsColumn])
+  @@map("product_mappings")
 }
 
-// Customer Mapping Table - maps ecommerce customers to SendPulse contacts
 model CustomerMapping {
-  id         Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id          Int       @id @default(autoincrement())
+  ecommerceId Int?      @map("ecommerce_id")
+  sendpulseId String    @map("sendpulse_id")
+  phone       String    @unique
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  email       String?
+  firstName   String    @map("first_name")
+  lastName    String    @map("last_name")
+  lastSyncAt  DateTime? @map("last_sync_at")
+  syncStatus  String    @default("ACTIVE") @map("sync_status")
 
-  // Customer identification
-  ecommerceId    Int?    @map("ecommerce_id")
-  phone          String  @unique
-  email          String?
-  
-  // SendPulse information
-  sendpulseId    String  @map("sendpulse_id")
-  firstName      String @map("first_name")
-  lastName       String @map("last_name")
-
-  // Sync information
-  lastSyncAt     DateTime? @map("last_sync_at")
-  syncStatus     String @default("ACTIVE") @map("sync_status")
-
-  @@map("customer_mappings")
   @@index([phone])
   @@index([email])
   @@index([sendpulseId])
+  @@map("customer_mappings")
 }
 
-// API Logs Table - logs important API calls for debugging
 model ApiLog {
-  id         Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now()) @map("created_at")
+  id           Int      @id @default(autoincrement())
+  createdAt    DateTime @default(now()) @map("created_at")
+  method       String
+  endpoint     String
+  statusCode   Int      @map("status_code")
+  userType     String?  @map("user_type")
+  userId       String?  @map("user_id")
+  userAgent    String?  @map("user_agent")
+  ipAddress    String?  @map("ip_address")
+  responseTime Int?     @map("response_time")
+  context      String   @default("{}")
+  errorMessage String?  @map("error_message")
 
-  // Request information
-  method      String
-  endpoint    String
-  statusCode  Int @map("status_code")
-  
-  // User information
-  userType    String?  @map("user_type")
-  userId      String?  @map("user_id")
-  userAgent   String?  @map("user_agent")
-  ipAddress   String?  @map("ip_address")
-
-  // Timing
-  responseTime Int? @map("response_time")
-
-  // Additional context
-  context       String @default("{}")
-  errorMessage  String? @map("error_message")
-
-  @@map("api_logs")
   @@index([endpoint])
   @@index([statusCode])
   @@index([userType])
   @@index([createdAt])
+  @@map("api_logs")
 }
 
-// Bot Cart Items Table - stores temporary cart items before order creation
 model BotCartItem {
-  id         Int      @id @default(autoincrement())
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-
-  // User identification
-  telegramId String @map("telegram_id")
-  contactId  String @map("contact_id")
-
-  // Product information
-  productId   Int     @map("product_id")
-  productName String  @map("product_name")
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  telegramId  String   @map("telegram_id")
+  contactId   String   @map("contact_id")
+  productId   Int      @map("product_id")
+  productName String   @map("product_name")
   quantity    Int
-  price       Decimal @db.Decimal(10, 2)
-  weightKg    Decimal @default(0) @map("weight_kg") @db.Decimal(10, 3)
-  total       Decimal @db.Decimal(10, 2)
+  price       Decimal  @db.Decimal(10, 2)
+  weightKg    Decimal  @default(0) @map("weight_kg") @db.Decimal(10, 3)
+  total       Decimal  @db.Decimal(10, 2)
 
-  @@map("bot_cart_items")
   @@index([telegramId])
   @@index([contactId])
   @@index([productId])
+  @@map("bot_cart_items")
 }
