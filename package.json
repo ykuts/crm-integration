@@ -11,6 +11,7 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "build": "npx prisma generate",
+    "postinstall": "prisma generate",
     "prisma:generate": "npx prisma generate",
     "prisma:push": "npx prisma db push",
     "prisma:migrate": "npx prisma migrate dev",
