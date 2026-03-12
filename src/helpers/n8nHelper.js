@@ -136,21 +136,24 @@ export async function getProductColumn(product) {
 export async function calculateProductQuantities(items) {
   // Initialize all columns to 0
   const quantities = {
-    cheese_300g: 0,
-    cheese_packet_kg: 0,
-    cheese_kg: 0,
-    cottage_cheese_choc: 0,
-    cheese_mass_300g: 0,
-    syrnyky: 0,
-    pelmeni: 0,
-    holubtsi: 0,
-    var_cherry: 0,
-    var_cabbage: 0,
-    var_potato_mushroom: 0,
-    var_potato: 0,
-    var_cheese: 0,
-    var_meat: 0,
-    nuts: 0
+    syr_101_500_p: 0,        // Сир кисломолочний
+    srk_201_360_c: 0,        // Сирок молочний шоколад
+    srk_202_360_c: 0,        // Сирок чорний шоколад
+    srk_203_250_c: 0,        // Сирок на паличці молочний
+    srk_204_250_c: 0,        // Сирок на паличці чорний
+    sym_221_300_p: 0,        // Сиркова маса
+    npf_351_500_l: 0,        // Сирники солодкі
+    npf_352_500_l: 0,        // Сирники солоні
+    npf_311_1000: 0,         // Пельмені класичні
+    npf_313_1000: 0,         // Пельмені з куркою
+    npf_361_1000: 0,         // Голубці класичні
+    npf_321_1000: 0,         // Вареники з вишнею
+    npf_326_1000: 0,         // Вареники з капустою
+    npf_325_1000: 0,         // Вареники з картоплею + гриби
+    npf_324_1000: 0,         // Вареники з творогом
+    npf_322_1000: 0,         // Вареники з картоплею
+    npf_327_1000: 0,         // Вареники з м'ясом
+    dsr_251_360_k: 0         // Горішки
   };
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -200,6 +203,15 @@ export async function formatOrderForSheet(order) {
   const canton = order.canton || extractCanton(deliveryAddress) || '';
 
   return {
+    // Date & Time (Column A)
+    orderDateTime: new Date(order.createdAt).toLocaleString('uk-UA', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }),
+
     // Customer info (columns A-F)
     clientName: order.customerName || order.guestInfo?.firstName + ' ' + order.guestInfo?.lastName || '',
     phone1: order.phone || order.guestInfo?.phone || '',
@@ -209,21 +221,24 @@ export async function formatOrderForSheet(order) {
     canton: canton,
     
     // Product quantities (columns J-W) - from database mapping!
-    cheese300g: productQuantities.cheese_300g,
-    cheesePacketKg: productQuantities.cheese_packet_kg,
-    cheeseKg: productQuantities.cheese_kg,
-    cottageCheesChoc: productQuantities.cottage_cheese_choc,
-    cheeseMass300g: productQuantities.cheese_mass_300g,
-    syrnyky: productQuantities.syrnyky,
-    pelmeni: productQuantities.pelmeni,
-    holubtsi: productQuantities.holubtsi,
-    varCherry: productQuantities.var_cherry,
-    varCabbage: productQuantities.var_cabbage,
-    varPotatoMushroom: productQuantities.var_potato_mushroom,
-    varPotato: productQuantities.var_potato,
-    varCheese: productQuantities.var_cheese,
-    varMeat: productQuantities.var_meat,
-    nuts: productQuantities.nuts,
+    syr101500P: productQuantities.syr_101_500_p,
+    srk201360C: productQuantities.srk_201_360_c,
+    srk202360C: productQuantities.srk_202_360_c,
+    srk203250C: productQuantities.srk_203_250_c,
+    srk204250C: productQuantities.srk_204_250_c,
+    sym221300P: productQuantities.sym_221_300_p,
+    npf351500L: productQuantities.npf_351_500_l,
+    npf352500L: productQuantities.npf_352_500_l,
+    npf3111000: productQuantities.npf_311_1000,
+    npf3131000: productQuantities.npf_313_1000,
+    npf3611000: productQuantities.npf_361_1000,
+    npf3211000: productQuantities.npf_321_1000,
+    npf3261000: productQuantities.npf_326_1000,
+    npf3251000: productQuantities.npf_325_1000,
+    npf3241000: productQuantities.npf_324_1000,
+    npf3221000: productQuantities.npf_322_1000,
+    npf3271000: productQuantities.npf_327_1000,
+    dsr251360K: productQuantities.dsr_251_360_k,
     
     // Metadata
     orderId: order.id,

@@ -29,17 +29,28 @@ export class EnhancedCrmService extends SendPulseCRMService {
       // Step 1: Create order in ecommerce database
       const ecommerceOrder = await this.createOrderInEcommerceDB(telegramOrderData, botOrderId);
 
-      // Step 2: Create deal in SendPulse CRM
-      const crmResult = await this.createOrderInCRM(telegramOrderData);
+      // Step 2: Try SendPulse CRM (non-critical — skip if 403)
+      let crmResult = { dealId: null, contactId: null };
+      try {
+        crmResult = await this.createOrderInCRM(telegramOrderData);
+        await this.updateEcommerceOrderWithCrmIds(ecommerceOrder.id, crmResult);
+      } catch (crmError) {
+        logger.warn('SendPulse CRM unavailable, order saved to DB only', {
+          error: crmError.message,
+          status: crmError.response?.status, // покажет 403
+          ecommerceOrderId: ecommerceOrder.id
+        });
+        // Don't throw — order exists in our DB, that's enough
+      }
 
       // Step 3: Update ecommerce order with CRM IDs
-      await this.updateEcommerceOrderWithCrmIds(ecommerceOrder.id, crmResult);
+      //await this.updateEcommerceOrderWithCrmIds(ecommerceOrder.id, crmResult);
 
       // Step 4: Store bot order mapping for tracking
       await this.storeBotOrderMapping(telegramOrderData, botOrderId, ecommerceOrder.id, crmResult);
 
       // Step 5: Log successful sync
-      await this.logOrderSync(ecommerceOrder.id, crmResult.dealId, 'CREATE', 'SUCCESS');
+      await this.logOrderSync(ecommerceOrder.id, crmResult.dealId, 'CREATE', crmResult.dealId ? 'SUCCESS' : 'PARTIAL_SUCCESS');
 
       // ========================================
       // NEW: Step 6: Set bot variable has_active_order = 1
@@ -111,28 +122,17 @@ export class EnhancedCrmService extends SendPulseCRMService {
         orderNumber: `ORDER-${ecommerceOrder.id}`,
         totalAmount: telegramOrderData.sum || telegramOrderData.totalAmount,
         status: 'created',
-        message: 'Order created successfully in all systems'
+        message: crmResult.dealId 
+        ? 'Order created in all systems' 
+        : 'Order created in DB (CRM unavailable)'
       };
 
       logger.info('Complete Telegram order creation successful', result);
       return result;
 
     } catch (error) {
-      logger.error('Complete Telegram order creation failed', {
-        error: error.message,
-        stack: error.stack,
-        botOrderId,
-        telegramOrderData
-      });
-
-      // Try to log failed sync if we have some order data
-      try {
-        await this.logOrderSync(null, null, 'CREATE', 'FAILED', error.message);
-      } catch (logError) {
-        logger.error('Failed to log sync failure', { error: logError.message });
-      }
-
-      throw new Error(`Complete order creation failed: ${error.message}`);
+      logger.error('Order creation failed', { error: error.message, botOrderId });
+    throw new Error(`Complete order creation failed: ${error.message}`);
     }
   }
 
