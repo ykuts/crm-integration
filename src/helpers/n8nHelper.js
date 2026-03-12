@@ -147,12 +147,14 @@ export async function calculateProductQuantities(items) {
     npf_311_1000: 0,         // Пельмені класичні
     npf_313_1000: 0,         // Пельмені з куркою
     npf_361_1000: 0,         // Голубці класичні
+    npf_363_1000_l: 0,      // Голубці з куркою
     npf_321_1000: 0,         // Вареники з вишнею
     npf_326_1000: 0,         // Вареники з капустою
     npf_325_1000: 0,         // Вареники з картоплею + гриби
     npf_324_1000: 0,         // Вареники з творогом
     npf_322_1000: 0,         // Вареники з картоплею
-    npf_327_1000: 0,         // Вареники з м'ясом
+    npf_327_1000: 0,         // Вареники з сиром
+    npf_323_1000_l: 0,      // Вареники з м'ясом
     dsr_251_360_k: 0         // Горішки
   };
 
@@ -232,12 +234,14 @@ export async function formatOrderForSheet(order) {
     npf3111000: productQuantities.npf_311_1000,
     npf3131000: productQuantities.npf_313_1000,
     npf3611000: productQuantities.npf_361_1000,
+    npf3631000L: productQuantities.npf_363_1000_l,
     npf3211000: productQuantities.npf_321_1000,
     npf3261000: productQuantities.npf_326_1000,
     npf3251000: productQuantities.npf_325_1000,
     npf3241000: productQuantities.npf_324_1000,
     npf3221000: productQuantities.npf_322_1000,
     npf3271000: productQuantities.npf_327_1000,
+    npf3231000L: productQuantities.npf_323_1000_l,
     dsr251360K: productQuantities.dsr_251_360_k,
     
     // Metadata
