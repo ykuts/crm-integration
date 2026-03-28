@@ -5,6 +5,13 @@ import logger from '../utils/logger.js';
 
 const dbService = new DatabaseService();
 
+// Ensure phone always starts with + for consistent buyer deduplication in KeyCRM
+const normalizePhone = (phone) => {
+  if (!phone) return null;
+  const digits = phone.replace(/\s+/g, '');
+  return digits.startsWith('+') ? digits : `+${digits}`;
+};
+
 export class KeyCrmOrderService {
   // ---------------------------------------------------------------------------
   // Create a KeyCRM order from Telegram bot order data.
@@ -47,7 +54,7 @@ export class KeyCrmOrderService {
         full_name: [customerInfo?.firstName, customerInfo?.lastName]
           .filter(Boolean)
           .join(' ') || 'Telegram User',
-        phone: customerInfo?.phone || null,
+        phone: normalizePhone(customerInfo?.phone),
       },
 
       products: orderProducts,
