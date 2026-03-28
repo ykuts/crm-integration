@@ -1,5 +1,6 @@
 import { SendPulseCRMService } from './sendPulseCrmService.js';
 import { DatabaseService } from './databaseService.js';
+import { keyCrmOrderService } from './keyCrmOrderService.js';
 import axios from 'axios';
 import logger from '../utils/logger.js';
 import { sendOrderToN8n } from '../helpers/n8nHelper.js';
@@ -29,16 +30,16 @@ export class EnhancedCrmService extends SendPulseCRMService {
       // Step 1: Create order in ecommerce database
       const ecommerceOrder = await this.createOrderInEcommerceDB(telegramOrderData, botOrderId);
 
-      // Step 2: Try SendPulse CRM (non-critical — skip if 403)
+      // Step 2: Try KeyCRM (non-critical — ecommerce DB order is the source of truth)
       let crmResult = { dealId: null, contactId: null };
       try {
-        crmResult = await this.createOrderInCRM(telegramOrderData);
+        const keycrmResult = await keyCrmOrderService.createOrderFromBot(telegramOrderData);
+        crmResult = { dealId: keycrmResult.keycrmOrderId, contactId: null };
         await this.updateEcommerceOrderWithCrmIds(ecommerceOrder.id, crmResult);
       } catch (crmError) {
-        logger.warn('SendPulse CRM unavailable, order saved to DB only', {
+        logger.warn('KeyCRM unavailable, order saved to DB only', {
           error: crmError.message,
-          status: crmError.response?.status, // покажет 403
-          ecommerceOrderId: ecommerceOrder.id
+          ecommerceOrderId: ecommerceOrder.id,
         });
         // Don't throw — order exists in our DB, that's enough
       }
@@ -625,8 +626,8 @@ export class EnhancedCrmService extends SendPulseCRMService {
       });
 
       const updatePayload = {
-        sendpulseDealId: crmResult.dealId.toString(),
-        sendpulseContactId: crmResult.contactId.toString(),
+        sendpulseDealId: crmResult.dealId?.toString() || '',
+        sendpulseContactId: crmResult.contactId?.toString() || '',
         syncStatus: 'SYNCED',
         lastSyncAt: new Date().toISOString()
       };
@@ -678,8 +679,8 @@ export class EnhancedCrmService extends SendPulseCRMService {
         notes: telegramOrderData.question || telegramOrderData.notes || '',
         // Link to both ecommerce and CRM
         ecommerceOrderId: ecommerceOrderId,
-        sendpulseDealId: crmResult.dealId.toString(),
-        sendpulseContactId: crmResult.contactId.toString(),
+        sendpulseDealId: crmResult.dealId?.toString() || null,
+        sendpulseContactId: crmResult.contactId?.toString() || null,
         metadata: JSON.stringify({
           createdAt: new Date(),
           telegramContactId: telegramOrderData.contact_id,
