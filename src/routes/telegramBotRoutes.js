@@ -511,7 +511,7 @@ router.post('/cart-checkout', async (req, res) => {
       botOrderId: `cart_${Date.now()}`,
       contact_id,
       telegram_id: telegram_id || chatId,
-      language: req.body.language || 'uk',
+      language: orderAttributes?.language || req.body.language || 'uk',
       customerInfo: customerInfo || {},
       products,
       deliveryInfo: deliveryInfo || {},
@@ -519,7 +519,7 @@ router.post('/cart-checkout', async (req, res) => {
       notes: notes || `Cart checkout - ${cart.totalItems} items`,
       orderAttributes: {
         ...orderAttributes,
-        language: req.body.language || 'uk',
+        language: orderAttributes?.language || req.body.language || 'uk',
         cart_items: cart.totalItems,
         cart_total: cart.totalAmount,
         cart_weight: cart.totalWeight,
