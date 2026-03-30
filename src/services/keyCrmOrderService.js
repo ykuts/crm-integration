@@ -29,9 +29,23 @@ export class KeyCrmOrderService {
   async createOrderFromBot(telegramOrderData) {
     const { products, customerInfo, deliveryInfo, notes } = telegramOrderData;
 
+    // Map channel name → KeyCRM source ID
+    // whatsapp=1, telegram=2, instagram=3 (configure via env to override)
+    const SOURCE_IDS = {
+      whatsapp:  Number(process.env.KEYCRM_SOURCE_WHATSAPP_ID)  || 1,
+      telegram:  Number(process.env.KEYCRM_SOURCE_TELEGRAM_ID)  || 2,
+      instagram: Number(process.env.KEYCRM_SOURCE_INSTAGRAM_ID) || 3,
+    };
+
+    const sourceId =
+      SOURCE_IDS[telegramOrderData.source?.toLowerCase()] ||
+      Number(process.env.KEYCRM_SOURCE_TELEGRAM_ID) || 2;
+
     logger.info('Building KeyCRM order from bot data', {
       productCount: products?.length,
       buyerPhone: customerInfo?.phone,
+      source: telegramOrderData.source,
+      sourceId,
     });
 
     // Step 1: Resolve each product — fetch mapping + live price from KeyCRM
@@ -39,7 +53,7 @@ export class KeyCrmOrderService {
 
     // Step 2: Build the KeyCRM order payload
     const payload = {
-      source_id: Number(process.env.KEYCRM_SOURCE_TELEGRAM_ID),
+      source_id: sourceId,
 
       buyer_comment: [
         deliveryInfo?.city,

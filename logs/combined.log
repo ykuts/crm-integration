@@ -271,3 +271,111 @@
 {"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/status/:orderId (requires auth)\u001b[39m","timestamp":"2026-03-28 23:23:19:614"}
 {"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/health\u001b[39m","timestamp":"2026-03-28 23:23:19:615"}
 {"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /health\u001b[39m","timestamp":"2026-03-28 23:23:19:615"}
+{"environment":"development","level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mLogger initialized\u001b[39m","timestamp":"2026-03-28 23:23:27:339","transports":4}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-28 23:23:27:367"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-28 23:23:27:422"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-28 23:23:27:424"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-28 23:23:27:427"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mCRM Integration Service started on port 3005\u001b[39m","timestamp":"2026-03-28 23:23:27:487"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEnvironment: development\u001b[39m","timestamp":"2026-03-28 23:23:27:488"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mPort: 3005\u001b[39m","timestamp":"2026-03-28 23:23:27:488"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEcommerce API URL: https://syrnyk-v2-production.up.railway.app\u001b[39m","timestamp":"2026-03-28 23:23:27:488"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mAvailable endpoints:\u001b[39m","timestamp":"2026-03-28 23:23:27:489"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/telegram-order\u001b[39m","timestamp":"2026-03-28 23:23:27:489"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/bot/telegram-health\u001b[39m","timestamp":"2026-03-28 23:23:27:489"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/test-product-conversion\u001b[39m","timestamp":"2026-03-28 23:23:27:489"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/update-deal-status (requires auth)\u001b[39m","timestamp":"2026-03-28 23:23:27:489"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/create-deal (requires auth)\u001b[39m","timestamp":"2026-03-28 23:23:27:489"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/status/:orderId (requires auth)\u001b[39m","timestamp":"2026-03-28 23:23:27:490"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/health\u001b[39m","timestamp":"2026-03-28 23:23:27:490"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /health\u001b[39m","timestamp":"2026-03-28 23:23:27:490"}
+{"environment":"development","level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mLogger initialized\u001b[39m","timestamp":"2026-03-29 17:20:34:409","transports":4}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-29 17:20:34:445"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-29 17:20:34:528"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-29 17:20:34:531"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-29 17:20:34:535"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mCRM Integration Service started on port 3005\u001b[39m","timestamp":"2026-03-29 17:20:34:665"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEnvironment: development\u001b[39m","timestamp":"2026-03-29 17:20:34:665"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mPort: 3005\u001b[39m","timestamp":"2026-03-29 17:20:34:665"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEcommerce API URL: https://syrnyk-v2-production.up.railway.app\u001b[39m","timestamp":"2026-03-29 17:20:34:666"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mAvailable endpoints:\u001b[39m","timestamp":"2026-03-29 17:20:34:666"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/telegram-order\u001b[39m","timestamp":"2026-03-29 17:20:34:667"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/bot/telegram-health\u001b[39m","timestamp":"2026-03-29 17:20:34:667"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/test-product-conversion\u001b[39m","timestamp":"2026-03-29 17:20:34:668"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/update-deal-status (requires auth)\u001b[39m","timestamp":"2026-03-29 17:20:34:668"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/create-deal (requires auth)\u001b[39m","timestamp":"2026-03-29 17:20:34:668"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/status/:orderId (requires auth)\u001b[39m","timestamp":"2026-03-29 17:20:34:669"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/health\u001b[39m","timestamp":"2026-03-29 17:20:34:669"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /health\u001b[39m","timestamp":"2026-03-29 17:20:34:669"}
+{"environment":"development","level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mLogger initialized\u001b[39m","timestamp":"2026-03-29 17:43:33:401","transports":4}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-29 17:43:33:429"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-29 17:43:33:486"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-29 17:43:33:489"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-29 17:43:33:492"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mCRM Integration Service started on port 3005\u001b[39m","timestamp":"2026-03-29 17:43:33:554"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEnvironment: development\u001b[39m","timestamp":"2026-03-29 17:43:33:554"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mPort: 3005\u001b[39m","timestamp":"2026-03-29 17:43:33:554"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEcommerce API URL: https://syrnyk-v2-production.up.railway.app\u001b[39m","timestamp":"2026-03-29 17:43:33:554"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mAvailable endpoints:\u001b[39m","timestamp":"2026-03-29 17:43:33:555"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/telegram-order\u001b[39m","timestamp":"2026-03-29 17:43:33:555"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/bot/telegram-health\u001b[39m","timestamp":"2026-03-29 17:43:33:556"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/test-product-conversion\u001b[39m","timestamp":"2026-03-29 17:43:33:556"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/update-deal-status (requires auth)\u001b[39m","timestamp":"2026-03-29 17:43:33:556"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/create-deal (requires auth)\u001b[39m","timestamp":"2026-03-29 17:43:33:556"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/status/:orderId (requires auth)\u001b[39m","timestamp":"2026-03-29 17:43:33:556"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/health\u001b[39m","timestamp":"2026-03-29 17:43:33:557"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /health\u001b[39m","timestamp":"2026-03-29 17:43:33:557"}
+{"environment":"development","level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mLogger initialized\u001b[39m","timestamp":"2026-03-30 14:29:27:664","transports":4}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:29:27:697"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:29:27:757"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:29:27:759"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:29:27:762"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mCRM Integration Service started on port 3005\u001b[39m","timestamp":"2026-03-30 14:29:27:859"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEnvironment: development\u001b[39m","timestamp":"2026-03-30 14:29:27:860"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mPort: 3005\u001b[39m","timestamp":"2026-03-30 14:29:27:860"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEcommerce API URL: https://syrnyk-v2-production.up.railway.app\u001b[39m","timestamp":"2026-03-30 14:29:27:860"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mAvailable endpoints:\u001b[39m","timestamp":"2026-03-30 14:29:27:861"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/telegram-order\u001b[39m","timestamp":"2026-03-30 14:29:27:861"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/bot/telegram-health\u001b[39m","timestamp":"2026-03-30 14:29:27:862"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/test-product-conversion\u001b[39m","timestamp":"2026-03-30 14:29:27:862"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/update-deal-status (requires auth)\u001b[39m","timestamp":"2026-03-30 14:29:27:862"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/create-deal (requires auth)\u001b[39m","timestamp":"2026-03-30 14:29:27:862"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/status/:orderId (requires auth)\u001b[39m","timestamp":"2026-03-30 14:29:27:862"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/health\u001b[39m","timestamp":"2026-03-30 14:29:27:862"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /health\u001b[39m","timestamp":"2026-03-30 14:29:27:863"}
+{"environment":"development","level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mLogger initialized\u001b[39m","timestamp":"2026-03-30 14:30:57:333","transports":4}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:30:57:360"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:30:57:414"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:30:57:417"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:30:57:420"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mCRM Integration Service started on port 3005\u001b[39m","timestamp":"2026-03-30 14:30:57:484"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEnvironment: development\u001b[39m","timestamp":"2026-03-30 14:30:57:485"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mPort: 3005\u001b[39m","timestamp":"2026-03-30 14:30:57:485"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEcommerce API URL: https://syrnyk-v2-production.up.railway.app\u001b[39m","timestamp":"2026-03-30 14:30:57:485"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mAvailable endpoints:\u001b[39m","timestamp":"2026-03-30 14:30:57:486"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/telegram-order\u001b[39m","timestamp":"2026-03-30 14:30:57:486"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/bot/telegram-health\u001b[39m","timestamp":"2026-03-30 14:30:57:487"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/test-product-conversion\u001b[39m","timestamp":"2026-03-30 14:30:57:487"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/update-deal-status (requires auth)\u001b[39m","timestamp":"2026-03-30 14:30:57:487"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/create-deal (requires auth)\u001b[39m","timestamp":"2026-03-30 14:30:57:487"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/status/:orderId (requires auth)\u001b[39m","timestamp":"2026-03-30 14:30:57:488"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/health\u001b[39m","timestamp":"2026-03-30 14:30:57:488"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /health\u001b[39m","timestamp":"2026-03-30 14:30:57:488"}
+{"environment":"development","level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mLogger initialized\u001b[39m","timestamp":"2026-03-30 14:31:12:919","transports":4}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:31:12:950"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:31:13:005"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:31:13:007"}
+{"ecommerceApiUrl":"https://syrnyk-v2-production.up.railway.app","hasApiToken":true,"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mDatabaseService initialized\u001b[39m","timestamp":"2026-03-30 14:31:13:010"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mCRM Integration Service started on port 3005\u001b[39m","timestamp":"2026-03-30 14:31:13:067"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEnvironment: development\u001b[39m","timestamp":"2026-03-30 14:31:13:067"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mPort: 3005\u001b[39m","timestamp":"2026-03-30 14:31:13:068"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mEcommerce API URL: https://syrnyk-v2-production.up.railway.app\u001b[39m","timestamp":"2026-03-30 14:31:13:068"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32mAvailable endpoints:\u001b[39m","timestamp":"2026-03-30 14:31:13:069"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/telegram-order\u001b[39m","timestamp":"2026-03-30 14:31:13:069"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/bot/telegram-health\u001b[39m","timestamp":"2026-03-30 14:31:13:069"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/bot/test-product-conversion\u001b[39m","timestamp":"2026-03-30 14:31:13:069"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/update-deal-status (requires auth)\u001b[39m","timestamp":"2026-03-30 14:31:13:070"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- POST /api/sync/create-deal (requires auth)\u001b[39m","timestamp":"2026-03-30 14:31:13:070"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/status/:orderId (requires auth)\u001b[39m","timestamp":"2026-03-30 14:31:13:070"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /api/sync/health\u001b[39m","timestamp":"2026-03-30 14:31:13:070"}
+{"level":"\u001b[32minfo\u001b[39m","message":"\u001b[32m- GET /health\u001b[39m","timestamp":"2026-03-30 14:31:13:070"}
