@@ -72,6 +72,17 @@ export class KeyCrmOrderService {
       },
 
       products: orderProducts,
+
+      custom_fields: [
+        {
+          uuid: 'OR_1072',
+          value: telegramOrderData.orderAttributes?.language || 'uk',
+        },
+        {
+          uuid: 'OR_1071',
+          value: telegramOrderData.deliveryInfo?.station || '',
+        },
+      ],
     };
 
     // Step 3: Submit to KeyCRM
