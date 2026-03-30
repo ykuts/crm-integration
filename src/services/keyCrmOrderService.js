@@ -65,9 +65,6 @@ export class KeyCrmOrderService {
         .concat(notes ? `. ${notes}` : ''),
 
       buyer: {
-        full_name: [customerInfo?.firstName, customerInfo?.lastName]
-          .filter(Boolean)
-          .join(' ') || 'Telegram User',
         phone: normalizePhone(customerInfo?.phone),
       },
 
