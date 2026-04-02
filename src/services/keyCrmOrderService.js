@@ -64,9 +64,20 @@ export class KeyCrmOrderService {
         .join(', ')
         .concat(notes ? `. ${notes}` : ''),
 
-      buyer: {
-        phone: normalizePhone(customerInfo?.phone),
-      },
+      buyer: (() => {
+        const phone = normalizePhone(customerInfo?.phone);
+        const fullName = [customerInfo?.firstName, customerInfo?.lastName]
+          .filter(Boolean).join(' ') || null;
+
+        return {
+          // Send phone if available (primary deduplication key)
+          ...(phone && { phone }),
+          // Send full_name only if no phone AND no email (fallback to avoid KeyCRM 422)
+          ...(!phone && !customerInfo?.email && fullName && { full_name: fullName }),
+          // Send email if available
+          ...(customerInfo?.email && { email: customerInfo.email }),
+        };
+      })(),
 
       products: orderProducts,
 
