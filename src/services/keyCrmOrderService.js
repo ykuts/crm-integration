@@ -82,6 +82,12 @@ export class KeyCrmOrderService {
       ],
     };
 
+    logger.info('KeyCRM order language debug', {
+      orderAttributes: telegramOrderData.orderAttributes,
+      language: telegramOrderData.orderAttributes?.language,
+      customFields: payload.custom_fields,
+    });
+
     // Step 3: Submit to KeyCRM
     const result = await keyCrmApiService.createOrder(payload);
 
