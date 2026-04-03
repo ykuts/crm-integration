@@ -61,6 +61,16 @@ export class KeyCrmOrderService {
     const language = telegramOrderData.orderAttributes?.language || 'uk';
     const keycrmLanguage = languageMap[language] || 'UA';
 
+    const deliveryTypeMap = {
+      'address': 'Адресна',
+      'railway_station': 'Кур\'єр',
+      'pickup': 'Самовивіз',
+    };
+    const deliveryType = deliveryTypeMap[deliveryInfo?.type] || '';
+    const deliveryAddress = deliveryInfo?.address ||
+      [deliveryInfo?.city, deliveryInfo?.station, deliveryInfo?.canton]
+        .filter(Boolean).join(', ');
+
     // Step 2: Build the KeyCRM order payload
     const payload = {
       source_id: sourceId,
@@ -81,14 +91,9 @@ export class KeyCrmOrderService {
       products: orderProducts,
 
       custom_fields: [
-        {
-          uuid: 'OR_1072',
-          value: keycrmLanguage,
-        },
-        {
-          uuid: 'OR_1071',
-          value: telegramOrderData.deliveryInfo?.station || '',
-        },
+        { uuid: 'OR_1072', value: keycrmLanguage },
+        { uuid: 'OR_1049', value: deliveryType },
+        { uuid: 'OR_1004', value: deliveryAddress },
       ],
     };
 
