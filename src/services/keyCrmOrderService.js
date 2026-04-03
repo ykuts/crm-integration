@@ -51,6 +51,16 @@ export class KeyCrmOrderService {
     // Step 1: Resolve each product — fetch mapping + live price from KeyCRM
     const orderProducts = await this._resolveProducts(products);
 
+    // Map bot language codes to KeyCRM select list values
+    const languageMap = {
+      'uk': 'UA',
+      'ru': 'ru',
+      'fr': 'FR',
+      'en': 'ENG',
+    };
+    const language = telegramOrderData.orderAttributes?.language || 'uk';
+    const keycrmLanguage = languageMap[language] || 'UA';
+
     // Step 2: Build the KeyCRM order payload
     const payload = {
       source_id: sourceId,
@@ -73,7 +83,7 @@ export class KeyCrmOrderService {
       custom_fields: [
         {
           uuid: 'OR_1072',
-          value: telegramOrderData.orderAttributes?.language || 'uk',
+          value: keycrmLanguage,
         },
         {
           uuid: 'OR_1071',
