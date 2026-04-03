@@ -62,9 +62,16 @@ export class KeyCrmOrderService {
     const keycrmLanguage = languageMap[language] || 'UA';
 
     const deliveryTypeMap = {
+      // English keys (from new Telegraf bot)
       'address': 'Адресна',
       'railway_station': 'Кур\'єр',
       'pickup': 'Самовивіз',
+      // Ukrainian keys (from SendPulse bot variable Доставка_(тип))
+      'Адресна': 'Адресна',
+      'ЖД вокзали': 'Кур\'єр',
+      'Самовивіз': 'Самовивіз',
+      'адресна': 'Адресна',
+      'самовивіз': 'Самовивіз',
     };
     const deliveryType = deliveryTypeMap[deliveryInfo?.type] || '';
     const deliveryAddress = deliveryInfo?.address ||
