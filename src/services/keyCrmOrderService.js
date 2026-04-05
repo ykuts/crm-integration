@@ -32,8 +32,8 @@ export class KeyCrmOrderService {
     // Map channel name → KeyCRM source ID
     // whatsapp=1, telegram=2, instagram=3 (configure via env to override)
     const SOURCE_IDS = {
-      whatsapp:  Number(process.env.KEYCRM_SOURCE_WHATSAPP_ID)  || 1,
-      telegram:  Number(process.env.KEYCRM_SOURCE_TELEGRAM_ID)  || 2,
+      whatsapp: Number(process.env.KEYCRM_SOURCE_WHATSAPP_ID) || 1,
+      telegram: Number(process.env.KEYCRM_SOURCE_TELEGRAM_ID) || 2,
       instagram: Number(process.env.KEYCRM_SOURCE_INSTAGRAM_ID) || 3,
     };
 
@@ -66,12 +66,28 @@ export class KeyCrmOrderService {
       'address': 'Адресна',
       'railway_station': 'Кур\'єр',
       'pickup': 'Самовивіз',
-      // Ukrainian keys (from SendPulse bot variable Доставка_(тип))
+
+      // Ukrainian
       'Адресна': 'Адресна',
+      'адресна': 'Адресна',
       'ЖД вокзали': 'Кур\'єр',
       'Самовивіз': 'Самовивіз',
-      'адресна': 'Адресна',
       'самовивіз': 'Самовивіз',
+
+      // Russian
+      'Адресная': 'Адресна',
+      'адресная': 'Адресна',
+      'ЖД вокзалы': 'Кур\'єр',
+      'Самовывоз': 'Самовивіз',
+      'самовывоз': 'Самовивіз',
+
+      // French
+      'À domicile': 'Адресна',
+      'à domicile': 'Адресна',
+      'Gares': 'Кур\'єр',
+      'gares': 'Кур\'єр',
+      'Retrait à Nyon': 'Самовивіз',
+      'retrait à nyon': 'Самовивіз',
     };
     const deliveryType = deliveryTypeMap[deliveryInfo?.type] || '';
     const deliveryAddress = deliveryInfo?.address ||
