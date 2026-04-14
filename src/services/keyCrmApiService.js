@@ -301,7 +301,7 @@ async updateBuyer(buyerId, data) {
   try {
     logger.info('Updating buyer in KeyCRM', { buyerId, data });
 
-    const response = await this.client.put(`/buyers/${buyerId}`, data);
+    const response = await this.client.put(`/buyer/${buyerId}`, data);
 
     logger.info('KeyCRM buyer updated successfully', { buyerId });
     return response.data;
