@@ -131,7 +131,10 @@ export class KeyCrmOrderService {
 
     // Step 4: Fill in buyer name if contact was just created (phone-only, no name yet)
     // If full_name is empty — contact is new and has no data, safe to update
-    if (result.buyer?.id && !result.buyer?.full_name) {
+    const buyerName = result.buyer?.full_name;
+    const buyerHasNoName = !buyerName || buyerName === '(empty)';
+
+    if (result.buyer?.id && buyerHasNoName) {
       const fullName = telegramOrderData.orderAttributes?.fullname
         || [customerInfo?.firstName, customerInfo?.lastName].filter(Boolean).join(' ').trim();
 
