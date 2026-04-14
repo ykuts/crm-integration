@@ -129,8 +129,7 @@ export class KeyCrmOrderService {
     // Step 3: Submit to KeyCRM
     const result = await keyCrmApiService.createOrder(payload);
 
-    // Step 4: Fill in buyer name if contact was just created (phone-only, no name yet)
-    // If full_name is empty — contact is new and has no data, safe to update
+    // Step 4: Fill in buyer data if contact was just created (no name yet)
     const buyerName = result.buyer?.full_name;
     const buyerHasNoName = !buyerName || buyerName === '(empty)';
 
@@ -138,9 +137,28 @@ export class KeyCrmOrderService {
       const fullName = telegramOrderData.orderAttributes?.fullname
         || [customerInfo?.firstName, customerInfo?.lastName].filter(Boolean).join(' ').trim();
 
-      if (fullName) {
-        await keyCrmApiService.updateBuyer(result.buyer.id, { full_name: fullName });
+      // Build custom fields for the buyer
+      const buyerCustomFields = [
+        { uuid: 'CT_1011', value: keycrmLanguage }, // Мова спілкування
+        { uuid: 'CT_1048', value: deliveryType },   // Тип доставки
+      ];
+
+      // Add delivery address only for address delivery type
+      if (deliveryInfo?.address && deliveryType === 'Адресна') {
+        buyerCustomFields.push({ uuid: 'CT_1069', value: deliveryInfo.address });
       }
+
+      const updateData = { custom_fields: buyerCustomFields };
+      if (fullName) updateData.full_name = fullName;
+
+      await keyCrmApiService.updateBuyer(result.buyer.id, updateData);
+
+      logger.info('KeyCRM buyer updated with name and custom fields', {
+        buyerId: result.buyer.id,
+        fullName,
+        deliveryType,
+        language: keycrmLanguage,
+      });
     }
 
     logger.info('KeyCRM order created from bot data', {
