@@ -276,6 +276,10 @@ export class KeyCrmApiService {
         orderNumber: createdOrder.order_number,
       });
 
+      logger.info('KeyCRM full create response', {
+        data: JSON.stringify(response.data)
+      });
+
       return createdOrder;
     } catch (error) {
       logger.error('KeyCRM createOrder failed', {

@@ -3,7 +3,6 @@ import { DatabaseService } from './databaseService.js';
 import { keyCrmOrderService } from './keyCrmOrderService.js';
 import axios from 'axios';
 import logger from '../utils/logger.js';
-import { sendOrderToN8n } from '../helpers/n8nHelper.js';
 
 export class EnhancedCrmService extends SendPulseCRMService {
   constructor() {
@@ -89,30 +88,9 @@ export class EnhancedCrmService extends SendPulseCRMService {
       });
       // ========================================
 
-      // ========================================
-      // ✨ NEW: Step 7: Send to Google Sheets via n8n
-      // ========================================
-      setImmediate(async () => {
-        try {
-          logger.info('Syncing to Google Sheets via n8n', {
-            botOrderId,
-            ecommerceOrderId: ecommerceOrder.id
-          });
-
-          await sendOrderToN8n(ecommerceOrder);
-
-          logger.info('✅ Synced to Google Sheets successfully', {
-            orderId: ecommerceOrder.id
-          });
-
-        } catch (n8nError) {
-          logger.warn('Google Sheets sync failed (non-critical)', {
-            error: n8nError.message,
-            orderId: ecommerceOrder.id
-          });
-        }
-      });
-      // ========================================
+      // Step 7: Google Sheets sync via n8n — disabled
+      // TODO: re-enable when n8n webhook is configured
+      // setImmediate(async () => { await sendOrderToN8n(ecommerceOrder); });
 
       const result = {
         success: true,
