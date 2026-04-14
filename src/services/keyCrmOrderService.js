@@ -129,9 +129,21 @@ export class KeyCrmOrderService {
     // Step 3: Submit to KeyCRM
     const result = await keyCrmApiService.createOrder(payload);
 
+    // Step 4: Fill in buyer name if contact was just created (phone-only, no name yet)
+    // If full_name is empty — contact is new and has no data, safe to update
+    if (result.buyer?.id && !result.buyer?.full_name) {
+      const fullName = telegramOrderData.orderAttributes?.fullname
+        || [customerInfo?.firstName, customerInfo?.lastName].filter(Boolean).join(' ').trim();
+
+      if (fullName) {
+        await keyCrmApiService.updateBuyer(result.buyer.id, { full_name: fullName });
+      }
+    }
+
     logger.info('KeyCRM order created from bot data', {
       keycrmOrderId: result.id,
       orderNumber: result.order_number,
+      buyerIsNew: !result.buyer?.full_name,
     });
 
     return {

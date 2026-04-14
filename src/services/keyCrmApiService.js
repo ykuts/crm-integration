@@ -292,6 +292,30 @@ export class KeyCrmApiService {
   }
 
   // ---------------------------------------------------------------------------
+// Update buyer (contact) data in KeyCRM
+// Used to fill in name for newly created contacts (phone-only)
+//
+// KeyCRM endpoint: PUT /buyers/{id}
+// ---------------------------------------------------------------------------
+async updateBuyer(buyerId, data) {
+  try {
+    logger.info('Updating buyer in KeyCRM', { buyerId, data });
+
+    const response = await this.client.put(`/buyers/${buyerId}`, data);
+
+    logger.info('KeyCRM buyer updated successfully', { buyerId });
+    return response.data;
+  } catch (error) {
+    // Non-critical — log but don't throw, order is already created
+    logger.warn('KeyCRM updateBuyer failed (non-critical)', {
+      buyerId,
+      error: error.message,
+      response: error.response?.data,
+    });
+  }
+}
+
+  // ---------------------------------------------------------------------------
   // Health check — fetches the first product page to verify connectivity
   // ---------------------------------------------------------------------------
   async healthCheck() {
