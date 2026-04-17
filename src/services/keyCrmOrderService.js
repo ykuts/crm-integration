@@ -90,10 +90,6 @@ export class KeyCrmOrderService {
       'retrait à nyon': 'Самовивіз',
     };
     const deliveryType = deliveryTypeMap[deliveryInfo?.type] || '';
-    const deliveryAddress = deliveryInfo?.address ||
-      [deliveryInfo?.city, deliveryInfo?.station, deliveryInfo?.canton]
-        .filter(Boolean).join(', ');
-
     // Step 2: Build the KeyCRM order payload
     const payload = {
       source_id: sourceId,
@@ -116,7 +112,7 @@ export class KeyCrmOrderService {
       custom_fields: [
         { uuid: 'OR_1072', value: keycrmLanguage },
         { uuid: 'OR_1049', value: deliveryType },
-        { uuid: 'OR_1004', value: deliveryAddress },
+        { uuid: 'OR_1077', value: deliveryInfo?.address || '' },
       ],
     };
 
