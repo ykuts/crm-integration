@@ -110,7 +110,7 @@ export class KeyCrmOrderService {
       products: orderProducts,
 
       custom_fields: [
-        { uuid: 'OR_1072', value: keycrmLanguage },
+        { uuid: 'OR_1078', value: keycrmLanguage },
         { uuid: 'OR_1049', value: deliveryType },
         { uuid: 'OR_1077', value: deliveryInfo?.address || '' },
       ],
