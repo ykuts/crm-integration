@@ -17,7 +17,45 @@ export class EnhancedCrmService extends SendPulseCRMService {
  * @param {Object} telegramOrderData - Order data from Telegram bot
  * @returns {Object} Combined result with both DB and CRM IDs
  */
+
   async createTelegramOrderComplete(telegramOrderData) {
+    const botOrderId = `TG_${Date.now()}_${telegramOrderData.chatId || telegramOrderData.contact_id}`;
+
+    try {
+      logger.info('Starting complete Telegram order creation', {
+        botOrderId,
+        chatId: telegramOrderData.chatId || telegramOrderData.contact_id
+      });
+
+      // Create order in KeyCRM (primary system)
+      const keycrmResult = await keyCrmOrderService.createOrderFromBot(telegramOrderData);
+      const crmResult = { dealId: keycrmResult.keycrmOrderId, contactId: null };
+
+      // Store bot order mapping for tracking
+      await this.storeBotOrderMapping(telegramOrderData, botOrderId, null, crmResult);
+
+      // Log sync
+      await this.logOrderSync(null, crmResult.dealId, 'CREATE', 'Order created in KeyCRM');
+
+      const result = {
+        botOrderId,
+        ecommerceOrderId: null,
+        crmOrderId: crmResult.dealId,
+        orderNumber: keycrmResult.orderNumber || `KRM-${crmResult.dealId}`,
+        status: 'created'
+      };
+
+      logger.info('Complete Telegram order creation successful', result);
+      return result;
+
+    } catch (error) {
+      logger.error('Order creation failed', { error: error.message, botOrderId });
+      throw new Error(`Complete order creation failed: ${error.message}`);
+    }
+  }
+
+
+  /* async createTelegramOrderComplete(telegramOrderData) {
     const botOrderId = `TG_${Date.now()}_${telegramOrderData.chatId || telegramOrderData.contact_id}`;
 
     try {
@@ -113,7 +151,7 @@ export class EnhancedCrmService extends SendPulseCRMService {
       logger.error('Order creation failed', { error: error.message, botOrderId });
     throw new Error(`Complete order creation failed: ${error.message}`);
     }
-  }
+  } */
 
   /**
    * Create order in ecommerce database via API - FIXED VERSION
