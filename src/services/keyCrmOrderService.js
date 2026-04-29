@@ -170,6 +170,151 @@ export class KeyCrmOrderService {
   }
 
   // ---------------------------------------------------------------------------
+  // Create a KeyCRM order from a parsed Hostinger email notification.
+  //
+  // emailOrderData shape (from n8n parser):
+  // {
+  //   orderNumber: string,
+  //   date: string,
+  //   products: [{ name, sku, variant, qty, unitPrice }],
+  //   customer: { name, phone, email, address },
+  //   deliveryMethod: string,       // raw French text
+  //   keyCrmDeliveryType: string,   // already mapped: 'Адресна' | "Кур'єр" | 'Самовивіз'
+  //   paymentMethod: string,
+  //   subtotal: number,
+  //   shipping: number,
+  //   total: number,
+  // }
+  // ---------------------------------------------------------------------------
+  async createOrderFromEmail(emailOrderData) {
+    const { products, customer, keyCrmDeliveryType, deliveryMethod, paymentMethod, orderNumber } = emailOrderData;
+
+    // Hostinger website = source ID 4 (add KEYCRM_SOURCE_WEBSITE_ID to your env)
+    const sourceId = Number(process.env.KEYCRM_SOURCE_WEBSITE_ID) || 4;
+
+    logger.info('Building KeyCRM order from Hostinger email', {
+      orderNumber,
+      productCount: products?.length,
+      buyerPhone: customer?.phone,
+      sourceId,
+    });
+
+    // Step 1: Resolve products by SKU directly (no ecommerceId lookup needed)
+    const orderProducts = await this._resolveProductsBySku(products);
+
+    // Email orders from Hostinger are always French
+    const keycrmLanguage = 'FR';
+
+    // Step 2: Build the order payload
+    const payload = {
+      source_id: sourceId,
+
+      // Buyer comment: delivery method + payment method + Hostinger order number
+      buyer_comment: [
+        deliveryMethod,
+        paymentMethod,
+        `Commande Hostinger #${orderNumber}`,
+      ].filter(Boolean).join(' | '),
+
+      buyer: {
+        // Send only phone to avoid creating duplicate buyers
+        phone: normalizePhone(customer?.phone),
+      },
+
+      products: orderProducts,
+
+      custom_fields: [
+        { uuid: 'OR_1078', value: keycrmLanguage },
+        { uuid: 'OR_1049', value: keyCrmDeliveryType },
+        // Include address only for address delivery type
+        { uuid: 'OR_1077', value: keyCrmDeliveryType === 'Адресна' ? (customer?.address || '') : '' },
+      ],
+    };
+
+    // Step 3: Submit to KeyCRM
+    const result = await keyCrmApiService.createOrder(payload);
+
+    // Step 4: Update buyer name + custom fields if buyer is new
+    const buyerHasNoName = !result.buyer?.full_name || result.buyer?.full_name === '(empty)';
+
+    if (result.buyer?.id && buyerHasNoName) {
+      const updateData = {
+        full_name: customer?.name || '',
+        custom_fields: [
+          { uuid: 'CT_1011', value: keycrmLanguage },
+          { uuid: 'CT_1048', value: keyCrmDeliveryType },
+        ],
+      };
+
+      // Add delivery address to buyer profile for address delivery
+      if (customer?.address) {
+        updateData.custom_fields.push({ uuid: 'CT_1069', value: customer.address });
+      }
+
+      await keyCrmApiService.updateBuyer(result.buyer.id, updateData);
+
+      logger.info('KeyCRM buyer updated from email order', {
+        buyerId: result.buyer.id,
+        fullName: customer?.name,
+        keyCrmDeliveryType,
+      });
+    }
+
+    logger.info('KeyCRM order created from Hostinger email', {
+      keycrmOrderId: result.id,
+      orderNumber: result.order_number,
+      hostingerOrderNumber: orderNumber,
+    });
+
+    return {
+      keycrmOrderId: result.id,
+      orderNumber: result.order_number,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Resolve products from email by SKU — fetch price from KeyCRM directly.
+  // Email already contains unitPrice but we use KeyCRM price as source of truth.
+  // ---------------------------------------------------------------------------
+  async _resolveProductsBySku(products) {
+    if (!products || products.length === 0) {
+      throw new Error('Order must contain at least one product');
+    }
+
+    const resolved = [];
+
+    for (const item of products) {
+      // Look up product mapping by SKU
+      const mapping = await dbService.crmDb.productMapping.findFirst({
+        where: { keycrmSku: item.sku },
+      });
+
+      if (!mapping) {
+        throw new Error(`No product mapping found for SKU: ${item.sku}`);
+      }
+
+      // Fetch live price from KeyCRM (DB is source of truth)
+      const keycrmProduct = await keyCrmApiService.getProductById(mapping.keycrmId);
+
+      resolved.push({
+        sku: item.sku,
+        name: mapping.name || item.name,
+        price: keycrmProduct.price,
+        quantity: Number(item.qty) || 1,
+        currency_code: 'CHF',
+      });
+
+      logger.debug('Product resolved by SKU for email order', {
+        sku: item.sku,
+        keycrmId: mapping.keycrmId,
+        price: keycrmProduct.price,
+      });
+    }
+
+    return resolved;
+  }
+
+  // ---------------------------------------------------------------------------
   // For each bot product item, look up the ProductMapping in our DB to get the
   // keycrmId, then fetch the current price from KeyCRM.
   // Returns the products array ready to embed in the KeyCRM order payload.

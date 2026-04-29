@@ -11,6 +11,7 @@ import telegramBotRoutes from './routes/telegramBotRoutes.js';
 import syncRoutes from './routes/syncRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 import productRoutes from './routes/productRoutes.js';
+import emailOrderRoutes from './routes/emailOrderRoutes.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -93,6 +94,7 @@ app.use('/api/bot', telegramBotRoutes);
 app.use('/api/sync', authMiddleware, syncRoutes);
 app.use('/api/webhook', webhookRoutes);
 app.use('/api', productRoutes);
+app.use('/api/orders', emailOrderRoutes);
 
 
 // Root endpoint
