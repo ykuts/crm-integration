@@ -260,6 +260,19 @@ export class KeyCrmOrderService {
       });
     }
 
+    // Always update email from website orders — customer may be existing
+      // or may want to use a different email next time
+      if (result.buyer?.id && customer?.email) {
+        await keyCrmApiService.updateBuyer(result.buyer.id, {
+          email: customer.email
+        });
+
+        logger.info('KeyCRM buyer email updated from website order', {
+          buyerId: result.buyer.id,
+          email: customer.email,
+        });
+      }
+
     logger.info('KeyCRM order created from Hostinger email', {
       keycrmOrderId: result.id,
       orderNumber: result.order_number,
