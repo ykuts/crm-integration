@@ -264,7 +264,7 @@ export class KeyCrmOrderService {
       // or may want to use a different email next time
       if (result.buyer?.id && customer?.email) {
         await keyCrmApiService.updateBuyer(result.buyer.id, {
-          email: customer.email
+          email: [customer.email]
         });
 
         logger.info('KeyCRM buyer email updated from website order', {
