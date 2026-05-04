@@ -139,13 +139,25 @@ export class KeyCrmOrderService {
         { uuid: 'CT_1048', value: deliveryType },   // Тип доставки
       ];
 
-      // Add delivery address only for address delivery type
-      if (deliveryInfo?.address && deliveryType === 'Адресна') {
-        buyerCustomFields.push({ uuid: 'CT_1069', value: deliveryInfo.address });
-      }
+
 
       const updateData = { custom_fields: buyerCustomFields };
       if (fullName) updateData.full_name = fullName;
+
+      // Add delivery address only for address delivery type
+      if (deliveryInfo?.address && deliveryType === 'Адресна') {
+        //buyerCustomFields.push({ uuid: 'CT_1069', value: deliveryInfo.address });
+
+        updateData.shipping = [
+          {
+            address: deliveryInfo.address,
+            city: deliveryInfo.city,
+            region: deliveryInfo.canton,
+            recipient_full_name: fullName,
+            recipient_phone: normalizePhone(customerInfo?.phone),
+          }
+        ];
+      }
 
       await keyCrmApiService.updateBuyer(result.buyer.id, updateData);
 
@@ -247,8 +259,15 @@ export class KeyCrmOrderService {
       };
 
       // Add delivery address to buyer profile for address delivery
-      if (customer?.address) {
-        updateData.custom_fields.push({ uuid: 'CT_1069', value: customer.address });
+      if (customer?.address && keyCrmDeliveryType === 'Адресна') {
+        //updateData.custom_fields.push({ uuid: 'CT_1069', value: customer.address });
+        updateData.shipping = [
+          {
+            address: customer.address,
+            recipient_full_name: customer?.name || '',
+            recipient_phone: normalizePhone(customer?.phone),
+          }
+        ];
       }
 
       await keyCrmApiService.updateBuyer(result.buyer.id, updateData);
@@ -261,17 +280,17 @@ export class KeyCrmOrderService {
     }
 
     // Always update email from website orders — customer may be existing
-      // or may want to use a different email next time
-      if (result.buyer?.id && customer?.email) {
-        await keyCrmApiService.updateBuyer(result.buyer.id, {
-          email: [customer.email]
-        });
+    // or may want to use a different email next time
+    if (result.buyer?.id && customer?.email) {
+      await keyCrmApiService.updateBuyer(result.buyer.id, {
+        email: [customer.email]
+      });
 
-        logger.info('KeyCRM buyer email updated from website order', {
-          buyerId: result.buyer.id,
-          email: customer.email,
-        });
-      }
+      logger.info('KeyCRM buyer email updated from website order', {
+        buyerId: result.buyer.id,
+        email: customer.email,
+      });
+    }
 
     logger.info('KeyCRM order created from Hostinger email', {
       keycrmOrderId: result.id,
