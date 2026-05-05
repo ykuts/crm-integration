@@ -20,6 +20,12 @@ router.use((req, res, next) => {
   next();
 });
 
+// POST /api/sync/products
+// Manually trigger KeyCRM → product_mappings sync
+router.post('/products', async (req, res) => {
+  await syncController.syncProducts(req, res);
+});
+
 /**
  * POST /api/sync/update-deal-status
  * Update deal status in SendPulse when ecommerce order status changes

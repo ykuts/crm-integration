@@ -1,13 +1,79 @@
 // src/controllers/syncController.js
 import logger from '../utils/logger.js';
-import { SendPulseCRMService  } from '../services/sendPulseCrmService.js';
+import { SendPulseCRMService } from '../services/sendPulseCrmService.js';
 import axios from 'axios';
+import { keyCrmApiService } from '../services/keyCrmApiService.js';
+import { DatabaseService } from '../services/databaseService.js';
+
+const dbService = new DatabaseService();
 
 class SyncController {
   constructor() {
     this.crmService = new SendPulseCRMService();
     this.ecommerceApiUrl = process.env.ECOMMERCE_API_URL || 'http://localhost:5000';
     this.ecommerceApiToken = process.env.ECOMMERCE_API_TOKEN;
+  }
+
+
+  // Sync products from KeyCRM to product_mappings table.
+  // Fetches all products from KeyCRM and adds any missing ones to the DB.
+  // Existing products (matched by keycrmId) are skipped.
+  async syncProducts(req, res) {
+    try {
+      logger.info('Starting manual KeyCRM products sync');
+
+      // Fetch all products from KeyCRM (handles pagination automatically)
+      const keycrmProducts = await keyCrmApiService.getProducts({ fetchAll: true });
+
+      let added = 0;
+      let skipped = 0;
+
+      for (const product of keycrmProducts) {
+        // Skip if already mapped
+        const existing = await dbService.crmDb.productMapping.findFirst({
+          where: { keycrmId: product.id }
+        });
+
+        if (existing) {
+          skipped++;
+          continue;
+        }
+
+        // Add new product — ecommerceId and sendpulseId are legacy required fields,
+        // use 0 as placeholder since we no longer rely on them
+        await dbService.crmDb.productMapping.create({
+          data: {
+            ecommerceId: null,  // not used for KeyCRM-only products
+            sendpulseId: null,  // legacy field
+            name: product.name,
+            keycrmId: product.id,
+            keycrmSku: product.article || null,
+            syncStatus: 'ACTIVE',
+            lastSyncAt: new Date(),
+          }
+        });
+
+        added++;
+        logger.info('New product added to mappings', {
+          keycrmId: product.id,
+          name: product.name,
+          sku: product.article,
+        });
+      }
+
+      logger.info('KeyCRM products sync completed', { added, skipped, total: keycrmProducts.length });
+
+      return res.json({
+        success: true,
+        added,
+        skipped,
+        total: keycrmProducts.length,
+      });
+
+    } catch (error) {
+      logger.error('Failed to sync KeyCRM products', { error: error.message });
+      return res.status(500).json({ success: false, error: error.message });
+    }
   }
 
   /**
@@ -51,7 +117,7 @@ class SyncController {
         if (orderData.totalAmount) {
           updateData.totalAmount = parseFloat(orderData.totalAmount);
         }
-        
+
         if (orderData.customer) {
           updateData.customerInfo = {
             name: `${orderData.customer.firstName || ''} ${orderData.customer.lastName || ''}`.trim(),
@@ -96,10 +162,10 @@ class SyncController {
       // Log failed sync to ecommerce database
       if (req.body?.orderId && req.body?.dealId) {
         await this.logSyncToEcommerce(
-          req.body.orderId, 
-          req.body.dealId, 
-          'UPDATE_STATUS', 
-          'FAILED', 
+          req.body.orderId,
+          req.body.dealId,
+          'UPDATE_STATUS',
+          'FAILED',
           error.message
         );
       }
@@ -174,10 +240,10 @@ class SyncController {
       // Log failed sync
       if (req.body?.orderId) {
         await this.logSyncToEcommerce(
-          req.body.orderId, 
-          null, 
-          'CREATE_DEAL', 
-          'FAILED', 
+          req.body.orderId,
+          null,
+          'CREATE_DEAL',
+          'FAILED',
           error.message
         );
       }
@@ -250,7 +316,7 @@ class SyncController {
       'DELIVERED': 'won',
       'CANCELLED': 'lost'
     };
-    
+
     return statusMapping[orderStatus] || null;
   }
 
@@ -259,7 +325,7 @@ class SyncController {
    */
   transformOrderDataForCrm(orderData, orderId) {
     const customer = orderData.user || orderData.guestInfo || {};
-    
+
     return {
       source: 'ECOMMERCE',
       chatId: `order_${orderId}`,

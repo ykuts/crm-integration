@@ -37,14 +37,14 @@ model BotOrder {
 }
 
 model ProductMapping {
-  id                 Int       @id @default(autoincrement())
-  ecommerceId        Int       @unique @map("ecommerce_id")
-  sendpulseId        Int       @map("sendpulse_id")
-  name               String
+  id          Int    @id @default(autoincrement())
+  ecommerceId Int?   @unique @map("ecommerce_id")
+  sendpulseId Int?   @map("sendpulse_id")
+  name        String
 
   // KeyCRM integration fields
-  keycrmId           Int?     @map("keycrm_id")      // numeric product ID in KeyCRM
-  keycrmSku          String?  @map("keycrm_sku")     // SKU/article in KeyCRM e.g. SYR-101-500-P
+  keycrmId  Int?    @map("keycrm_id") // numeric product ID in KeyCRM
+  keycrmSku String? @map("keycrm_sku") // SKU/article in KeyCRM e.g. SYR-101-500-P
 
   lastSyncAt         DateTime? @map("last_sync_at")
   createdAt          DateTime  @default(now()) @map("created_at")
