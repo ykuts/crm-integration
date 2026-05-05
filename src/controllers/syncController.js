@@ -47,7 +47,7 @@ class SyncController {
             sendpulseId: null,  // legacy field
             name: product.name,
             keycrmId: product.id,
-            keycrmSku: product.article || null,
+            keycrmSku: product.sku || null,
             syncStatus: 'ACTIVE',
             lastSyncAt: new Date(),
           }
@@ -57,7 +57,7 @@ class SyncController {
         logger.info('New product added to mappings', {
           keycrmId: product.id,
           name: product.name,
-          sku: product.article,
+          sku: product.sku,
         });
       }
 
