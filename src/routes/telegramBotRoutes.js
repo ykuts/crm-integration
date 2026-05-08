@@ -411,8 +411,8 @@ router.get('/cart/:contact_id', async (req, res) => {
         const itemTotal = parseFloat(item.total).toFixed(2);
         
         // Category 1: Products sold by piece (qty only, no units)
-        // Products: 4, 11, 12
-        if ([4, 11, 12].includes(productId)) {
+        // Products: 4, 11, 12, 30
+        if ([4, 11, 12, 30].includes(productId)) {
           return `${itemName} x ${item.quantity} = ${itemTotal} CHF`;
         }
         
