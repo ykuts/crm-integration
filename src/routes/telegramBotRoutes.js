@@ -392,10 +392,10 @@ router.get('/cart/:contact_id', async (req, res) => {
 
     // Translations for cart UI
     const translations = {
-      uk: { emptyCart: 'Кошик порожній', total: 'Всього' },
-      en: { emptyCart: 'Cart is empty', total: 'Total' },
-      fr: { emptyCart: 'Panier vide', total: 'Total' },
-      ru: { emptyCart: 'Корзина пуста', total: 'Всего' }
+      uk: { emptyCart: 'Кошик порожній', total: 'Всього', kg: 'кг' },
+      en: { emptyCart: 'Cart is empty', total: 'Total', kg: 'kg' },
+      fr: { emptyCart: 'Panier vide', total: 'Total', kg: 'kg' },
+      ru: { emptyCart: 'Корзина пуста', total: 'Всего', kg: 'кг' }
     };
 
     const t = translations[language] || translations.uk;
@@ -420,13 +420,13 @@ router.get('/cart/:contact_id', async (req, res) => {
         // Products: 3, 6, 25
         else if ([3, 6, 25].includes(productId)) {
           const weightInKg = item.quantity / 2;
-          return `${itemName} ${weightInKg} кг = ${itemTotal} CHF`;
+          return `${itemName} ${weightInKg} ${t.kg} = ${itemTotal} CHF`;
         }
-        
+
         // Category 3: All other products (qty in kg)
         // All remaining products
         else {
-          return `${itemName} x ${item.quantity} кг = ${itemTotal} CHF`;
+          return `${itemName} x ${item.quantity} ${t.kg} = ${itemTotal} CHF`;
         }
       }).join('\n');
       
